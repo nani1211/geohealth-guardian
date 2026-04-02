@@ -14,45 +14,207 @@ import {
   Gauge,
   ExternalLink,
   AlertTriangle,
+  Search,
+  Mic,
+  MicOff,
+  Loader
 } from 'lucide-react';
 import LayerControls from './LayerControls';
 import ForecastPanel from './ForecastPanel';
 import RoutePanel from './RoutePanel';
+import useAppStore from '../store/useAppStore';
+import { forwardGeocode } from '../services/routeService';
+
+import usePreferences from '../hooks/usePreferences';
+import useRouteWeather from '../hooks/useRouteWeather';
+import useGeolocation from '../hooks/useGeolocation';
+import PreferencesPanel from './PreferencesPanel';
 
 /**
  * Sidebar — left-side panel with two tabs: Location (click weather) | Route (A→B weather).
  * Collapsible on mobile via a hamburger toggle.
  */
-const Sidebar = ({
-  addressData,
-  locationData,
-  weatherData,
-  forecastData,
-  nearbyPlaces,
-  airQualityData,
-  nwsAlerts,
-  routeData,
-  routeLoading,
-  routeError,
-  onCalculateRoute,
-  onClearRoute,
-  tempUnit,
-  windUnit,
-  weatherLayerOn,
-  diseaseLayerOn,
-  trafficLayerOn,
-  onToggleLayer,
-  currentLocation,
-  stopFilters,
-  onToggleStopFilter,
-  searchRadiusMiles,
-  onRadiusChange,
-  onPlaceClick,
-  preferencesPanel,
-  onStartTrip,
-}) => {
+const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState('location'); // 'location' | 'route'
+
+  const {
+    locationData, setLocationData,
+    mapCenter, setMapCenter,
+    mapZoom, setMapZoom,
+    placesData, setPlacesData,
+    placesEnabled, setPlacesEnabled,
+    activeLayers: globalActiveLayers, toggleLayer,
+    weatherData, setWeatherData,
+    addressData, setAddressData,
+    forecastData, setForecastData,
+    popupData, setPopupData,
+    placePopupData, setPlacePopupData,
+    airQualityData, setAirQualityData,
+    nwsAlerts, setNwsAlerts,
+    stopFilters, setStopFilters,
+    nearbyPlaces, setNearbyPlaces,
+    routeData, setRouteData,
+    routeLoading, setRouteLoading,
+    routeError, setRouteError,
+    currentLocation, setCurrentLocation,
+    isShareModalOpen, setIsShareModalOpen,
+  } = useAppStore();
+
+  const { calculateRoute, clearRoute } = useRouteWeather();
+  const { preferences, updatePreference, addFavoriteFood, removeFavoriteFood, updateMealWindow } = usePreferences();
+  const searchRadiusMiles = preferences.searchRadiusMiles;
+  const tempUnit = 'celsius'; // We would pull from useUnits
+  const windUnit = 'kmh';
+
+  const weatherLayerOn = globalActiveLayers.weather;
+  const diseaseLayerOn = globalActiveLayers.disease;
+  const trafficLayerOn = globalActiveLayers.traffic;
+
+  const onToggleLayer = toggleLayer;
+  const onToggleStopFilter = (type) => {
+    setStopFilters(stopFilters.includes(type) ? stopFilters.filter(t => t !== type) : [...stopFilters, type]);
+  };
+  const onStartTrip = () => setIsShareModalOpen(true);
+  const onCalculateRoute = calculateRoute;
+  const onClearRoute = clearRoute;
+  const onPlaceClick = (place) => {
+    if (place?.lat && place?.lon) {
+      setMapCenter([place.lon, place.lat]);
+      setPlacePopupData({ place, screenPoint: null });
+    }
+  };
+
+  const onRadiusChange = (radiusMiles) => {
+    updatePreference('searchRadiusMiles', radiusMiles);
+  };
+
+  const preferencesPanel = (
+    <PreferencesPanel
+      preferences={preferences}
+      onUpdatePreference={updatePreference}
+      onAddFavoriteFood={addFavoriteFood}
+      onRemoveFavoriteFood={removeFavoriteFood}
+      onUpdateMealWindow={updateMealWindow}
+    />
+  );
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [recentSearches, setRecentSearches] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('recentSearches') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const saveRecentSearch = (query) => {
+    if (!query) return;
+    setRecentSearches(prev => {
+      const updated = [query, ...prev.filter(q => q !== query)].slice(0, 5);
+      localStorage.setItem('recentSearches', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleUseMyLocation = () => {
+    if (navigator.geolocation) {
+      setIsSearching(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setMapCenter([pos.coords.longitude, pos.coords.latitude]);
+          setMapZoom(14);
+          setLocationData({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+          setIsSearching(false);
+        },
+        () => setIsSearching(false)
+      );
+    }
+  };
+
+  const handleSearchSubmit = async (e, forceQuery) => {
+    e?.preventDefault();
+    const query = forceQuery || searchQuery;
+    if (!query.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const result = await forwardGeocode(query);
+      setMapCenter([result.lon, result.lat]);
+      setMapZoom(13);
+      setLocationData({ lat: result.lat, lon: result.lon });
+      saveRecentSearch(query);
+      setSearchQuery('');
+    } catch (err) {
+      console.warn("Geocode failed:", err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const toggleVoiceSearch = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert("Voice search is not supported in your browser.");
+      return;
+    }
+    
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsListening(true);
+    
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      
+      const intentMap = {
+        'rest area': 'rest',
+        'food': 'food',
+        'gas': 'gas',
+        'hospital': 'hospital',
+        'mechanic': 'mechanic',
+      };
+      
+      for (const [key, filter] of Object.entries(intentMap)) {
+        if (transcript.includes(key)) {
+           if (!stopFilters.includes(filter)) {
+             setStopFilters([...stopFilters, filter]);
+           }
+           if (!placesEnabled) setPlacesEnabled(true);
+           setIsListening(false);
+           setSearchQuery(transcript);
+           return;
+        }
+      }
+
+      setSearchQuery(transcript);
+      setIsSearching(true);
+      try {
+        const result = await forwardGeocode(transcript);
+        setMapCenter([result.lon, result.lat]);
+        setMapZoom(13);
+        setLocationData({ lat: result.lat, lon: result.lon });
+        saveRecentSearch(transcript);
+      } catch (err) {
+        console.warn("Geocode failed:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+    
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.start();
+  };
 
   const RADIUS_PILLS = [1, 3, 5, 10];
 
@@ -122,7 +284,55 @@ const Sidebar = ({
           <p className="text-xs text-gray-500 mt-3 leading-relaxed">
             Click the map or plan a route to assess weather conditions.
           </p>
-          <div id="sidebar-search-container" className="mt-4 rounded-xl overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-gray-100 flex-shrink-0"></div>
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex bg-gray-50 border border-gray-200 rounded-xl overflow-hidden shadow-sm focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
+              <form onSubmit={(e) => handleSearchSubmit(e)} className="flex-1 flex items-center">
+                <button type="submit" disabled={isSearching} className="pl-3 pr-2 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer">
+                  <Search size={16} />
+                </button>
+                <input
+                  type="text"
+                  placeholder="Search city, address, destination..."
+                  className="flex-1 py-2.5 text-xs bg-transparent outline-none text-gray-800 placeholder-gray-400"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  disabled={isSearching || isListening}
+                />
+                <button
+                  type="button"
+                  onClick={toggleVoiceSearch}
+                  className={`p-2.5 transition-colors cursor-pointer ${isListening ? 'text-red-500' : 'text-gray-400 hover:text-indigo-600'}`}
+                  title="Voice Search"
+                >
+                  {isListening ? <Mic className="animate-pulse" size={16} /> : <Mic size={16} />}
+                </button>
+                {isSearching && (
+                  <div className="p-2.5 text-indigo-500">
+                    <Loader size={16} className="animate-spin" />
+                  </div>
+                )}
+              </form>
+            </div>
+            
+            {/* Recent Searches & Location Quick Actions */}
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <button 
+                onClick={handleUseMyLocation}
+                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md text-[10px] font-medium transition-colors"
+              >
+                <MapPin size={10} /> Use My Location
+              </button>
+              {recentSearches.map((search, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSearchSubmit(null, search)}
+                  className="px-2.5 py-1 bg-gray-50 border border-gray-100 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-md text-[10px] transition-colors whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]"
+                >
+                  {search}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* ── Tab pills ────────────────────────────────────────────── */}
@@ -297,78 +507,93 @@ const Sidebar = ({
                           <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
                             Nearby Stops
                           </p>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => onToggleStopFilter('gas')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('gas') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              ⛽ Gas
-                            </button>
-                            <button
-                              onClick={() => onToggleStopFilter('food')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('food') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              🍔 Food
-                            </button>
-                            <button
-                              onClick={() => onToggleStopFilter('rest')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('rest') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              🛑 Rest
-                            </button>
-                            <button
-                              onClick={() => onToggleStopFilter('emergency')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('emergency') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              🚨 Policy/Emerg
-                            </button>
-                            <button
-                              onClick={() => onToggleStopFilter('hospital')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('hospital') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              🏥 Hospital
-                            </button>
-                            <button
-                              onClick={() => onToggleStopFilter('mechanic')}
-                              className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
-                                stopFilters?.includes('mechanic') ? 'bg-slate-200 text-slate-700' : 'bg-gray-100 text-gray-400'
-                              }`}
-                            >
-                              🔧 Mechanic
-                            </button>
-                          </div>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="w-3 h-3 text-indigo-600 border-gray-300 rounded focus:ring-indigo-600"
+                              checked={placesEnabled}
+                              onChange={(e) => setPlacesEnabled?.(e.target.checked)}
+                            />
+                            <span className="text-[10px] font-medium text-gray-600 uppercase tracking-wider">Enable Places Search</span>
+                          </label>
                         </div>
+                        
+                        {placesEnabled && (
+                          <>
+                            <div className="flex gap-1 mb-2">
+                              {/* Action Buttons */}
+                            </div>
+                            <div className="flex gap-1 flex-wrap mb-2">
+                              <button
+                                onClick={() => onToggleStopFilter('gas')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('gas') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                ⛽ Gas
+                              </button>
+                              <button
+                                onClick={() => onToggleStopFilter('food')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('food') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                🍔 Food
+                              </button>
+                              <button
+                                onClick={() => onToggleStopFilter('rest')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('rest') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                🛑 Rest
+                              </button>
+                              <button
+                                onClick={() => onToggleStopFilter('emergency')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('emergency') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                🚨 Policy/Emerg
+                              </button>
+                              <button
+                                onClick={() => onToggleStopFilter('hospital')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('hospital') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                🏥 Hospital
+                              </button>
+                              <button
+                                onClick={() => onToggleStopFilter('mechanic')}
+                                className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                                  stopFilters?.includes('mechanic') ? 'bg-slate-200 text-slate-700' : 'bg-gray-100 text-gray-400'
+                                }`}
+                              >
+                                🔧 Mechanic
+                              </button>
+                            </div>
 
-                        {/* Radius pills */}
-                        <div className="flex gap-1.5 mb-3">
-                          {RADIUS_PILLS.map((r) => (
-                            <button
-                              key={r}
-                              onClick={() => onRadiusChange?.(r)}
-                              className={`flex-1 py-1 text-[10px] font-semibold rounded-lg transition-all cursor-pointer ${
-                                searchRadiusMiles === r
-                                  ? 'bg-indigo-600 text-white shadow-sm'
-                                  : 'bg-gray-100 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500'
-                              }`}
-                            >
-                              {r} mi
-                            </button>
-                          ))}
-                        </div>
+                            {/* Radius pills */}
+                            <div className="flex gap-1.5 mb-3">
+                              {RADIUS_PILLS.map((r) => (
+                                <button
+                                  key={r}
+                                  onClick={() => onRadiusChange?.(r)}
+                                  className={`flex-1 py-1 text-[10px] font-semibold rounded-lg transition-all cursor-pointer ${
+                                    searchRadiusMiles === r
+                                      ? 'bg-indigo-600 text-white shadow-sm'
+                                      : 'bg-gray-100 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500'
+                                  }`}
+                                >
+                                  {r} mi
+                                </button>
+                              ))}
+                            </div>
 
-                        {nearbyPlaces && nearbyPlaces.length > 0 ? (
-                          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                            {nearbyPlaces.filter(stop => stopFilters?.includes(stop.type)).map((stop, i) => (
+                            {placesData && placesData.length > 0 ? (
+                              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                                {placesData.filter(stop => stopFilters?.includes(stop.type)).map((stop, i) => (
                               <div
                                 key={stop.id || i}
                                 onClick={() => onPlaceClick?.(stop)}
@@ -417,8 +642,10 @@ const Sidebar = ({
                               </div>
                             ))}
                           </div>
-                        ) : (
-                          <p className="text-[10px] text-gray-400 italic text-center py-3">No stops found in this radius</p>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 italic text-center py-3">No stops found in this radius</p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

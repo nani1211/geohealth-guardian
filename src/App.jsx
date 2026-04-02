@@ -28,30 +28,39 @@ import { fetchDiseaseData } from './services/whoApiService';
 import { fetchNearbyPlaces } from './services/placesService';
 import { fetchAirQuality } from './services/airQualityService';
 import { fetchNWSAlerts } from './services/nwsAlertService';
+import useAppStore from './store/useAppStore';
 import RouteAlerts from './components/RouteAlerts';
 
 function App() {
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [locationData, setLocationData] = useState(null);
+  const {
+    locationData, setLocationData,
+    mapCenter, setMapCenter,
+    mapZoom, setMapZoom,
+    placesData, setPlacesData,
+    placesEnabled, setPlacesEnabled,
+    activeLayers: globalActiveLayers, toggleLayer,
+    weatherData, setWeatherData,
+    addressData, setAddressData,
+    forecastData, setForecastData,
+    popupData, setPopupData,
+    placePopupData, setPlacePopupData,
+    airQualityData, setAirQualityData,
+    nwsAlerts, setNwsAlerts,
+    stopFilters, setStopFilters,
+    nearbyPlaces, setNearbyPlaces,
+    routeData, setRouteData,
+    routeLoading, setRouteLoading,
+    routeError, setRouteError,
+    currentLocation, setCurrentLocation,
+    isShareModalOpen, setIsShareModalOpen,
+  } = useAppStore();
+
   const locationDataRef = useRef(locationData);
   useEffect(() => {
     locationDataRef.current = locationData;
   }, [locationData]);
 
-  const [mapCenter, setMapCenter] = useState([-98.5795, 39.8283]);
-  const [mapZoom, setMapZoom] = useState(4);
-  const [weatherData, setWeatherData] = useState(null);
-  const [addressData, setAddressData] = useState(null);
-  const [forecastData, setForecastData] = useState(null);
-  const [popupData, setPopupData] = useState(null);
-  const [placePopupData, setPlacePopupData] = useState(null);
-  const [airQualityData, setAirQualityData] = useState(null);
-  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  
-  // Route Stops filter state
-  const [stopFilters, setStopFilters] = useState(['gas', 'food', 'rest', 'emergency', 'hospital', 'mechanic']);
-  const [nearbyPlaces, setNearbyPlaces] = useState([]);
-  const [nwsAlerts, setNwsAlerts] = useState([]);
+
 
   // User preferences
   const {
@@ -66,10 +75,10 @@ function App() {
   // Unit preferences
   const { units, tempUnit, windUnit, isMetric, toggleUnits } = useUnits();
 
-  // Layer toggles
-  const [weatherLayerOn, setWeatherLayerOn] = useState(true);
-  const [diseaseLayerOn, setDiseaseLayerOn] = useState(true);
-  const [trafficLayerOn, setTrafficLayerOn] = useState(false);
+  // Layer toggles mapped from Zustand
+  const weatherLayerOn = globalActiveLayers.weather;
+  const diseaseLayerOn = globalActiveLayers.disease;
+  const trafficLayerOn = globalActiveLayers.traffic;
   
   const diseaseLayer = useDiseaseLayer();
   
@@ -130,7 +139,7 @@ function App() {
   }, []);
 
   // Route weather
-  const { routeData, loading: routeLoading, error: routeError, calculateRoute, clearRoute } = useRouteWeather();
+  const { calculateRoute, clearRoute } = useRouteWeather();
   const routeDataRef = useRef(routeData);
   useEffect(() => {
     routeDataRef.current = routeData;
@@ -188,7 +197,7 @@ function App() {
         fetchWeatherData(location.lat, location.lon, currentUnits).catch(() => null),
         reverseGeocode(location.lat, location.lon),
         fetchForecast(location.lat, location.lon, currentUnits).catch(() => []),
-        fetchNearbyPlaces(location.lat, location.lon, searchRadiusMeters).catch(() => []),
+        placesEnabled ? fetchNearbyPlaces(location.lat, location.lon, searchRadiusMeters).catch(() => []) : Promise.resolve([]),
         preferences.showAirQuality ? fetchAirQuality(location.lat, location.lon).catch(() => null) : Promise.resolve(null),
         fetchNWSAlerts(location.lat, location.lon).catch(() => []),
       ]).then(([weather, address, forecast, places, aqi, alerts]) => {
@@ -201,7 +210,7 @@ function App() {
           });
         }
         if (forecast) setForecastData(forecast);
-        if (places) setNearbyPlaces(places);
+        if (places && placesEnabled) setPlacesData(places);
         if (aqi) setAirQualityData(aqi);
         if (alerts) setNwsAlerts(alerts);
         if (weather && weatherLayerOn) {
@@ -210,7 +219,7 @@ function App() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
+  }, [location, placesEnabled, searchRadiusMeters]);
 
   const activeLayers = useMemo(() => {
     const layers = [];
@@ -263,37 +272,8 @@ function App() {
       );
     }
 
-    // 2. Weather markers at start and end only (reduce clutter so clusters are visible)
-    if (routeWeatherPoints && routeWeatherPoints.length > 0) {
-      [routeWeatherPoints[0], routeWeatherPoints[routeWeatherPoints.length - 1]].forEach((pt, idx) => {
-        if (!pt) return;
-        const color = pt.severity?.color || [100, 100, 100];
-        const isStart = idx === 0;
-
-        graphics.push(
-          new Graphic({
-            geometry: new Point({ longitude: pt.lon, latitude: pt.lat }),
-            symbol: {
-              type: 'simple-marker',
-              color: [...color, 220],
-              size: '14px',
-              outline: { color: [255, 255, 255], width: 2 },
-            },
-            attributes: { temp: pt.weather?.temp, condition: pt.weather?.description },
-            popupTemplate: {
-              title: isStart ? '🟢 Start' : '🔴 Destination',
-              content: [
-                `<b>${pt.weather?.temp ?? '–'}${tempUnit}</b> · ${pt.weather?.description || '–'}`,
-                pt.airQuality ? `AQI: ${pt.airQuality.label} (${pt.airQuality.aqi}/5)` : '',
-              ].filter(Boolean).join('<br/>'),
-            },
-          })
-        );
-      });
-    }
-
     return graphics;
-  }, [routeData, tempUnit, locationData, stopFilters, nearbyPlaces]);
+  }, [routeData, locationData]);
 
   // ── Handlers ─────────────────────────────────────────────────────
   const handleMapClick = (lat, lon, data, screenPoint) => {
@@ -309,7 +289,11 @@ function App() {
     }
 
     // Fetch nearby places + AQI + NWS alerts based on clicked location
-    fetchNearbyPlaces(lat, lon, searchRadiusMeters).then(setNearbyPlaces).catch(() => setNearbyPlaces([]));
+    if (placesEnabled) {
+      fetchNearbyPlaces(lat, lon, searchRadiusMeters).then(setPlacesData).catch(() => setPlacesData([]));
+    } else {
+      setPlacesData([]);
+    }
     fetchNWSAlerts(lat, lon).then(setNwsAlerts).catch(() => setNwsAlerts([]));
     if (preferences.showAirQuality) {
       fetchAirQuality(lat, lon).then(setAirQualityData).catch(() => setAirQualityData(null));
@@ -331,9 +315,7 @@ function App() {
   };
 
   const handleToggleLayer = (layerId) => {
-    if (layerId === 'weather') setWeatherLayerOn((v) => !v);
-    if (layerId === 'disease') setDiseaseLayerOn((v) => !v);
-    if (layerId === 'traffic') setTrafficLayerOn((v) => !v);
+    toggleLayer(layerId);
   };
 
   const handleCalculateRoute = useCallback(
@@ -352,11 +334,11 @@ function App() {
     updatePreference('searchRadiusMiles', radiusMiles);
     // Re-fetch nearby places with new radius
     const loc = locationDataRef.current;
-    if (loc?.lat && loc?.lon) {
+    if (loc?.lat && loc?.lon && placesEnabled) {
       const radiusMeters = Math.round(radiusMiles * 1609.34);
-      fetchNearbyPlaces(loc.lat, loc.lon, radiusMeters).then(setNearbyPlaces).catch(() => setNearbyPlaces([]));
+      fetchNearbyPlaces(loc.lat, loc.lon, radiusMeters).then(setPlacesData).catch(() => setPlacesData([]));
     }
-  }, [updatePreference]);
+  }, [updatePreference, placesEnabled, setPlacesData]);
 
   // Handle clicking a nearby place in the sidebar → zoom to it on map
   const handlePlaceClick = useCallback((place) => {
@@ -387,56 +369,11 @@ function App() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-full overflow-hidden bg-gray-100 font-sans">
-      <Sidebar
-        locationData={locationData}
-        weatherData={weatherData}
-        addressData={addressData}
-        forecastData={forecastData}
-        nearbyPlaces={nearbyPlaces}
-        airQualityData={airQualityData}
-        routeData={routeData}
-        routeLoading={routeLoading}
-        routeError={routeError}
-        onCalculateRoute={handleCalculateRoute}
-        onClearRoute={clearRoute}
-        tempUnit={tempUnit}
-        windUnit={windUnit}
-        weatherLayerOn={weatherLayerOn}
-        diseaseLayerOn={diseaseLayerOn}
-        trafficLayerOn={trafficLayerOn}
-        onToggleLayer={handleToggleLayer}
-        currentLocation={currentLocation}
-        stopFilters={stopFilters}
-        onToggleStopFilter={handleToggleStopFilter}
-        searchRadiusMiles={preferences.searchRadiusMiles}
-        onRadiusChange={handleRadiusChange}
-        onPlaceClick={handlePlaceClick}
-        nwsAlerts={nwsAlerts}
-        onStartTrip={() => setIsShareModalOpen(true)}
-        preferencesPanel={
-          <PreferencesPanel
-            preferences={preferences}
-            onUpdatePreference={updatePreference}
-            onAddFavoriteFood={addFavoriteFood}
-            onRemoveFavoriteFood={removeFavoriteFood}
-            onUpdateMealWindow={updateMealWindow}
-          />
-        }
-      />
+      <Sidebar />
 
       <div className="flex-1 relative">
         <div className="absolute inset-0 z-0">
-          <MapView
-            onMapClick={handleMapClick}
-            onPlaceSelected={handlePlaceSelected}
-            layers={activeLayers}
-            routeGraphics={routeGraphics}
-            places={[...(nearbyPlaces || []), ...(routeData?.stops || [])]}
-            stopFilters={stopFilters}
-            weatherEnabled={weatherLayerOn}
-            center={mapCenter}
-            zoom={mapZoom}
-          />
+          <MapView />
           {popupData && (
             <WeatherPopup
               weather={popupData.weather}

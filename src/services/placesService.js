@@ -76,19 +76,17 @@ function evictOldestCache() {
   keys.slice(0, 10).forEach((e) => localStorage.removeItem(e.key));
 }
 
+import { fetchOsmPlaces } from './osmPlacesService.js';
+
 /**
- * Queries practical stops for a given geographic point using Google Places API (New).
+ * Queries practical stops for a given geographic point.
+ * Uses OpenStreetMap Overpass as primary, falls back to Google Places API.
  * @param {number} lat
  * @param {number} lon
  * @param {number} radius Radius in meters (max 50,000)
  * @returns {Promise<Array>}
  */
 export async function fetchNearbyPlaces(lat, lon, radius = 5000) {
-  if (!GOOGLE_API_KEY) {
-    console.warn('[PlacesService] Missing VITE_GOOGLE_API_KEY in environment.');
-    return [];
-  }
-
   // ── Check cache first ─────────────────────────────────────────
   const cacheKey = makeCacheKey(lat, lon, radius);
   const cached = getCachedPlaces(cacheKey);
@@ -97,77 +95,77 @@ export async function fetchNearbyPlaces(lat, lon, radius = 5000) {
     return cached;
   }
 
-  const payload = {
-    includedTypes: ['gas_station', 'restaurant', 'rest_stop', 'convenience_store', 'hospital', 'pharmacy', 'car_repair', 'police'],
-    maxResultCount: 20,
-    locationRestriction: {
-      circle: {
-        center: { latitude: lat, longitude: lon },
-        radius: radius,
+  // 1. Try OpenStreetMap (Primary)
+  let mapped = await fetchOsmPlaces(lat, lon, radius);
+  
+  // 2. Fallback to Google Places if OSM returns empty (rural areas) and key exists
+  if (mapped.length === 0 && GOOGLE_API_KEY) {
+    console.log(`[PlacesService] OSM returned 0 results. Falling back to Google Places...`);
+    const payload = {
+      includedTypes: ['gas_station', 'restaurant', 'rest_stop', 'convenience_store', 'hospital', 'pharmacy', 'car_repair', 'police'],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: lat, longitude: lon },
+          radius: radius,
+        }
       }
+    };
+
+    try {
+      const response = await fetch(PLACES_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_API_KEY,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.primaryType,places.rating,places.userRatingCount,places.regularOpeningHours,places.priceLevel,places.formattedAddress,places.nationalPhoneNumber'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const places = data.places || [];
+
+        mapped = places.map(place => {
+          const appType = CATEGORY_MAP[place.primaryType] || 'rest';
+          const openNow = place.regularOpeningHours?.openNow ?? null;
+          const PRICE_MAP = {
+            'PRICE_LEVEL_FREE': 'Free',
+            'PRICE_LEVEL_INEXPENSIVE': '$',
+            'PRICE_LEVEL_MODERATE': '$$',
+            'PRICE_LEVEL_EXPENSIVE': '$$$',
+            'PRICE_LEVEL_VERY_EXPENSIVE': '$$$$',
+          };
+
+          return {
+            id: place.id,
+            name: place.displayName?.text || 'Unknown Place',
+            type: appType,
+            lat: place.location?.latitude,
+            lon: place.location?.longitude,
+            rating: place.rating ?? null,
+            reviewCount: place.userRatingCount ?? 0,
+            openNow,
+            priceLevel: PRICE_MAP[place.priceLevel] || null,
+            address: place.formattedAddress || null,
+            phone: place.nationalPhoneNumber || null,
+            source: 'google'
+          };
+        });
+      }
+    } catch (err) {
+      console.warn('[PlacesService] Google fallback failed:', err.message);
     }
-  };
-
-  try {
-    const response = await fetch(PLACES_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.primaryType,places.rating,places.userRatingCount,places.regularOpeningHours,places.priceLevel,places.formattedAddress,places.nationalPhoneNumber'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[PlacesService] Google Places API Error:', response.status, errorText);
-      return [];
-    }
-
-    const data = await response.json();
-    const places = data.places || [];
-
-    // Map to our uniform app structure with enriched details
-    const mapped = places.map(place => {
-      const appType = CATEGORY_MAP[place.primaryType] || 'rest';
-
-      // Determine open/closed status
-      const openNow = place.regularOpeningHours?.openNow ?? null;
-
-      // Format price level (PRICE_LEVEL_FREE → $, etc.)
-      const PRICE_MAP = {
-        'PRICE_LEVEL_FREE': 'Free',
-        'PRICE_LEVEL_INEXPENSIVE': '$',
-        'PRICE_LEVEL_MODERATE': '$$',
-        'PRICE_LEVEL_EXPENSIVE': '$$$',
-        'PRICE_LEVEL_VERY_EXPENSIVE': '$$$$',
-      };
-
-      return {
-        id: place.id,
-        name: place.displayName?.text || 'Unknown Place',
-        type: appType,
-        lat: place.location?.latitude,
-        lon: place.location?.longitude,
-        rating: place.rating ?? null,
-        reviewCount: place.userRatingCount ?? 0,
-        openNow,
-        priceLevel: PRICE_MAP[place.priceLevel] || null,
-        address: place.formattedAddress || null,
-        phone: place.nationalPhoneNumber || null,
-      };
-    });
-
-    // ── Store in cache ──────────────────────────────────────────
-    setCachedPlaces(cacheKey, mapped);
-    console.log(`[PlacesService] Cache STORED for (${lat.toFixed(3)}, ${lon.toFixed(3)}) r=${radius} — ${mapped.length} places`);
-
-    return mapped;
-  } catch (err) {
-    console.warn('[PlacesService] Failed to fetch nearby places:', err.message);
-    return [];
   }
+
+  // ── Store in cache ──────────────────────────────────────────
+  if (mapped.length > 0) {
+    setCachedPlaces(cacheKey, mapped);
+    console.log(`[PlacesService] Cache STORED for (${lat.toFixed(3)}, ${lon.toFixed(3)}) r=${radius} — ${mapped.length} places (source: ${mapped[0]?.source || 'osm'})`);
+  }
+
+  return mapped;
 }
 
 /**
