@@ -6,6 +6,7 @@ import { fetchWeatherData } from '../services/weatherService';
 import { batchFetchRouteStops } from '../services/placesService';
 import { batchFetchAirQuality } from '../services/airQualityService';
 import { generateMealRecommendations } from '../services/mealAdvisor';
+import { generateSmartStops } from '../services/smartStopService';
 
 // ─── 3-tier severity classification ───────────────────────────────
 // severe  → storm, heavy rain, snow, tornado, hurricane, blizzard
@@ -209,11 +210,20 @@ const useRouteWeather = () => {
         departureTime: new Date(),
       });
 
-      // 9. Commit to store
+      // 9. Smart stop suggestions — segment journey, rank stops
+      const smartStops = generateSmartStops({
+        stops,
+        totalMiles,
+        totalMinutes,
+        departureTime: new Date(),
+      });
+
+      // 10. Commit to store
       setRouteData({
         paths,
         stops,
         mealRecommendations,
+        smartStops,
         dirtRoadSegments,
         directions,
         summary,

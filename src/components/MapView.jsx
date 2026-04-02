@@ -24,8 +24,6 @@ import { fetchNearbyPlaces } from '../services/placesService';
 const MapView = () => {
   const containerRef = useRef(null);
   const viewRef = useRef(null);
-  const weatherEnabledRef = useRef(weatherEnabled);
-  const unitsRef = useRef(units);
   const routeLayerRef = useRef(null);
   const placesLayerRef = useRef(null);
   const routeWeatherLayerRef = useRef(null);
@@ -50,9 +48,11 @@ const MapView = () => {
   const weatherEnabled = activeLayers.weather;
   const { preferences } = usePreferences();
   const searchRadiusMeters = preferences.searchRadiusMiles * 1609.34;
+  const units = 'metric';
 
-  // We hardcode metric here just like original or take it from useUnits hook
-  const units = 'metric'; // Or use store later
+  // Refs that track latest values for use inside async callbacks
+  const weatherEnabledRef = useRef(weatherEnabled);
+  const unitsRef = useRef(units);
 
   useEffect(() => {
     weatherEnabledRef.current = weatherEnabled;

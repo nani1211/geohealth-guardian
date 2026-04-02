@@ -380,104 +380,132 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
             </div>
           )}
 
-          {/* ── Practical Stops (with enriched details) ─────────── */}
-          {routeData.stops && routeData.stops.length > 0 && (
+          {/* ── Smart Stop Suggestions ────────────────────────── */}
+          {routeData.smartStops && (routeData.smartStops.upcoming?.length > 0 || routeData.smartStops.later?.length > 0) && (
             <div className="pt-2">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
-                  Recommended Stops
-                </p>
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => onToggleStopFilter('gas')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                      stopFilters?.includes('gas') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    ⛽ Gas
-                  </button>
-                  <button
-                    onClick={() => onToggleStopFilter('food')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                      stopFilters?.includes('food') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    🍔 Food
-                  </button>
-                  <button
-                    onClick={() => onToggleStopFilter('rest')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                      stopFilters?.includes('rest') ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    🛑 Rest
-                  </button>
-                  <button
-                    onClick={() => onToggleStopFilter('emergency')}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
-                      stopFilters?.includes('emergency') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    🚨 Services
-                  </button>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5">
+                  <MapPin size={12} className="text-indigo-500" />
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                    Smart Stop Suggestions
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {['gas', 'food', 'rest', 'emergency'].map(filter => (
+                    <button
+                      key={filter}
+                      onClick={() => onToggleStopFilter(filter)}
+                      className={`px-1.5 py-0.5 text-[9px] font-medium rounded transition-colors cursor-pointer ${
+                        stopFilters?.includes(filter)
+                          ? filter === 'emergency' ? 'bg-red-100 text-red-700' : 'bg-indigo-100 text-indigo-700'
+                          : 'bg-gray-100 text-gray-400'
+                      }`}
+                    >
+                      {filter === 'gas' ? '⛽' : filter === 'food' ? '🍔' : filter === 'rest' ? '🛑' : '🚨'}
+                    </button>
+                  ))}
                 </div>
               </div>
-              
-              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                {routeData.stops.filter(s => stopFilters?.includes(s.type)).map((stop, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2 p-2.5 bg-white rounded-lg border border-gray-100 shadow-sm hover:border-indigo-200 hover:shadow transition-all"
-                  >
-                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 text-sm flex-shrink-0 mt-0.5">
-                      {stop.type === 'gas' ? '⛽' : stop.type === 'food' ? '🍔' : stop.type === 'emergency' ? '🚨' : '🛑'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{stop.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        {stop.rating && renderStars(stop.rating)}
-                        {stop.reviewCount > 0 && (
-                          <span className="text-[9px] text-gray-400">({stop.reviewCount})</span>
-                        )}
-                        {stop.priceLevel && (
-                          <span className="text-[10px] text-green-600 font-semibold">{stop.priceLevel}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-gray-400">Mile {stop.mileMarker}</span>
-                        {stop.openNow !== null && (
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                            stop.openNow ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
-                          }`}>
-                            {stop.openNow ? 'Open' : 'Closed'}
-                          </span>
-                        )}
-                      </div>
-                      {stop.address && (
-                        <p className="text-[9px] text-gray-400 truncate mt-0.5">{stop.address}</p>
-                      )}
-                      {stop.phone && (
-                        <p className="text-[9px] text-gray-400 truncate mt-0.5 font-medium">📞 {stop.phone}</p>
-                      )}
-                      {/* Navigate button */}
-                      <button
-                        onClick={() => {
-                          const dest = encodeURIComponent(stop.address || `${stop.lat},${stop.lon}`);
-                          window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank');
-                        }}
-                        className="inline-flex items-center gap-1 mt-1.5 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
-                      >
-                        <ExternalLink size={10} />
-                        Navigate
-                      </button>
-                    </div>
+
+              {/* Upcoming stops */}
+              {routeData.smartStops.upcoming?.filter(s => stopFilters?.includes(s.type)).length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                    Upcoming
+                  </p>
+                  <div className="space-y-1.5">
+                    {routeData.smartStops.upcoming.filter(s => stopFilters?.includes(s.type)).map((stop, i) => (
+                      <SmartStopCard key={stop.id || i} stop={stop} renderStars={renderStars} />
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
+
+              {/* Later stops */}
+              {routeData.smartStops.later?.filter(s => stopFilters?.includes(s.type)).length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
+                    Later
+                  </p>
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {routeData.smartStops.later.filter(s => stopFilters?.includes(s.type)).map((stop, i) => (
+                      <SmartStopCard key={stop.id || i} stop={stop} renderStars={renderStars} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+// ─── SmartStopCard — individual stop suggestion ───────────────────
+const SmartStopCard = ({ stop, renderStars }) => {
+  const emoji = stop._emoji || (
+    stop.type === 'gas' ? '⛽' :
+    stop.type === 'food' ? '🍔' :
+    stop.type === 'hospital' ? '🏥' :
+    stop.type === 'mechanic' ? '🔧' :
+    stop.type === 'emergency' ? '🚨' : '🛑'
+  );
+
+  return (
+    <div className="flex items-start gap-2.5 p-3 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-indigo-200 hover:shadow transition-all">
+      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-50 text-base flex-shrink-0 mt-0.5">
+        {emoji}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-gray-800 truncate">{stop.name}</p>
+
+        {/* Contextual reason */}
+        {stop._reason && (
+          <p className="text-[10px] text-indigo-500 mt-0.5 leading-snug">{stop._reason}</p>
+        )}
+
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {stop.rating && renderStars(stop.rating)}
+          {stop.reviewCount > 0 && (
+            <span className="text-[9px] text-gray-400">({stop.reviewCount})</span>
+          )}
+          {stop.priceLevel && (
+            <span className="text-[10px] text-green-600 font-semibold">{stop.priceLevel}</span>
+          )}
+          {stop.openNow !== null && (
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+              stop.openNow ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+            }`}>
+              {stop.openNow ? 'Open' : 'Closed'}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-[10px] text-gray-400">Mile {stop.mileMarker}</span>
+          {stop._segLabel && (
+            <span className="text-[9px] text-gray-300 font-medium">· {stop._segLabel}</span>
+          )}
+        </div>
+
+        {stop.address && (
+          <p className="text-[9px] text-gray-400 truncate mt-0.5">{stop.address}</p>
+        )}
+
+        <button
+          onClick={() => {
+            const dest = encodeURIComponent(stop.address || `${stop.lat},${stop.lon}`);
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank');
+          }}
+          className="inline-flex items-center gap-1 mt-1.5 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors cursor-pointer"
+        >
+          <ExternalLink size={10} />
+          Navigate
+        </button>
+      </div>
     </div>
   );
 };
