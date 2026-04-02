@@ -1,0 +1,42 @@
+/* GeoHealth Guardian — App-specific styles */
+
+/* ArcGIS popup overrides for better integration with our design system */
+.esri-popup__main-container {
+  font-family: 'Inter', 'system-ui', sans-serif;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.esri-popup__header {
+  background: linear-gradient(135deg, #4f46e5, #3b82f6);
+}
+
+.esri-popup__header-title {
+  color: white;
+  font-weight: 600;
+}
+
+.esri-popup__content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Smooth map transitions */
+.esri-view {
+  transition: opacity 0.3s ease;
+}
+
+/* Route alert animations */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.alert-pulse {
+  animation: pulse-glow 2s infinite;
+}

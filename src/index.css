@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-arcgis-blue: #007ac2;
+  --color-risk-low: #10b981;
+  --color-risk-medium: #f59e0b;
+  --color-risk-high: #ef4444;
+}
+
+body, html, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translate(-50%, -90%); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Reactive Styles for ArcGIS Search Widget within Sidebar */
+#sidebar-search-container .esri-search {
+  width: 100%;
+  border-radius: 0.75rem; /* rounded-xl */
+  overflow: hidden;
+  box-shadow: none;
+}
+#sidebar-search-container .esri-search__container {
+  border-radius: 0.75rem;
+}
+#sidebar-search-container .esri-search__input {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  outline: none;
+  font-family: inherit;
+}
+#sidebar-search-container .esri-search__submit-button {
+  background: white;
+  color: #6366f1; /* indigo-500 */
+}
+#sidebar-search-container .esri-search__clear-button {
+  color: #94a3b8;
+}
