@@ -212,28 +212,32 @@ const MapView = () => {
       view.map.add(routeLayerRef.current);
     }
 
+    console.log('[Debug] Syncing route layer with routeData:', routeData);
+
     const rl = routeLayerRef.current;
     rl.removeAll();
 
+    const graphicsToAdd = [];
+
     if (!routeData) {
-      // Draw standard blue pin if just isolated location
       if (currentLocation) {
-        rl.add(new Graphic({
+        graphicsToAdd.push(new Graphic({
           geometry: new Point({ longitude: currentLocation.lon, latitude: currentLocation.lat }),
           symbol: { type: 'simple-marker', color: [59, 130, 246, 0.9], size: '14px', outline: { color: [255, 255, 255], width: 2 } }
         }));
       }
-      return;
-    }
-
-    if (routeData.paths?.length) {
-      const poly = new Graphic({
+    } else if (routeData.paths?.length) {
+      graphicsToAdd.push(new Graphic({
         geometry: { type: "polyline", paths: routeData.paths, spatialReference: { wkid: 4326 } },
         symbol: { type: 'simple-line', color: [79, 70, 229, 0.8], width: 4, cap: 'round', join: 'round' }
-      });
-      rl.add(poly);
-      // view.goTo(poly.geometry.extent.expand(1.2)).catch(() => {}); // Optional: Auto zoom Route
+      }));
     }
+
+    if (graphicsToAdd.length > 0) {
+      rl.addMany(graphicsToAdd);
+    }
+    
+    console.log('[Stability Fix] Synced routeLayer graphics count:', graphicsToAdd.length);
   }, [routeData, currentLocation]);
 
   // ── Sync route weather graphics ─────────────────────────────────
@@ -246,8 +250,12 @@ const MapView = () => {
       view.map.add(routeWeatherLayerRef.current);
     }
 
+    console.log('[Debug] Syncing weather layer with routeWeatherData:', routeWeatherData);
+
     const wl = routeWeatherLayerRef.current;
     wl.removeAll();
+
+    const graphicsToAdd = [];
 
     if (routeWeatherData && routeWeatherData.length > 0) {
       routeWeatherData.forEach((pt) => {
@@ -277,22 +285,36 @@ const MapView = () => {
             ].filter(Boolean).join('<br/>'),
           },
         });
-        wl.add(ptGraphic);
+        graphicsToAdd.push(ptGraphic);
       });
     }
+
+    if (graphicsToAdd.length > 0) {
+      wl.addMany(graphicsToAdd);
+    }
+    
+    console.log('[Stability Fix] Synced routeWeatherLayer graphics count:', graphicsToAdd.length);
   }, [routeWeatherData]);
 
-  // ── Sync places graphics (FeatureLayer with clustering) ──
+  // ── Sync places graphics ──
   useEffect(() => {
     const view = viewRef.current;
     if (!view?.ready) return;
 
+    if (!placesLayerRef.current) {
+      placesLayerRef.current = new GraphicsLayer({ id: '__places__' });
+      view.map.add(placesLayerRef.current);
+    }
+    const pl = placesLayerRef.current;
+
+    console.log('[Debug] Syncing places layer with placesData:', placesData, 'placesEnabled:', placesEnabled);
+
     if (!placesEnabled) {
-      // Clear all places 
-      if (placesLayerRef.current) view.map.remove(placesLayerRef.current);
-      placesLayerRef.current = null;
+      pl.removeAll();
       return;
     }
+
+    pl.removeAll();
 
     const allPlaces = [...(placesData || []), ...(routeData?.stops || [])];
     const filteredPlaces = allPlaces.filter(p => p.lat && p.lon && stopFilters.includes(p.type));
@@ -306,141 +328,64 @@ const MapView = () => {
       mechanic: [100, 116, 139, 1],
     };
 
-    const typeToIcon = { gas: '⛽', food: '🍔', rest: '🛑', emergency: '🚨', hospital: '🏥', mechanic: '🔧' };
-
-    // Create underlying graphics
-    const graphics = filteredPlaces.map((place, i) => {
+    const graphicsToAdd = filteredPlaces.map((place, i) => {
+      const type = place.type || 'rest';
+      const color = typeToColor[type] || [100, 100, 100, 1];
+      
       return new Graphic({
         geometry: new Point({ longitude: place.lon, latitude: place.lat }),
         attributes: {
           ObjectID: i,
           isPlaceMarker: true,
-          placeType: place.type,
+          placeType: type,
           name: place.name,
           ...place
+        },
+        symbol: {
+          type: 'simple-marker',
+          path: "M16,0 C7.163,0 0,7.163 0,16 C0,24.837 16,48 16,48 C16,48 32,24.837 32,16 C32,7.163 24.837,0 16,0 Z M16,22 C12.686,22 10,19.314 10,16 C10,12.686 12.686,10 16,10 C19.314,10 22,12.686 22,16 C22,19.314 19.314,22 16,22 Z",
+          color: color,
+          size: 32,
+          outline: { color: [255, 255, 255, 0.9], width: 1.5 },
+          yoffset: 16,
         }
       });
     });
 
-    if (placesLayerRef.current) {
-      view.map.remove(placesLayerRef.current);
+    if (graphicsToAdd.length > 0) {
+      pl.addMany(graphicsToAdd);
     }
+    
+    console.log('[Stability Fix] Synced placesLayer graphics count:', graphicsToAdd.length);
 
-    // Re-create the FeatureLayer so we can set source easily
-    placesLayerRef.current = new FeatureLayer({
-      id: '__places__',
-      source: graphics,
-      objectIdField: 'ObjectID',
-      fields: [
-        { name: 'ObjectID', type: 'oid' },
-        { name: 'placeType', type: 'string' },
-        { name: 'name', type: 'string' },
-        { name: 'isPlaceMarker', type: 'boolean' }
-      ],
-      outFields: ['*'],
-      renderer: {
-        type: 'unique-value',
-        field: 'placeType',
-        uniqueValueInfos: ['gas', 'food', 'rest', 'emergency', 'hospital', 'mechanic'].map(type => ({
-          value: type,
-          symbol: {
-            type: 'simple-marker',
-            path: "M16,0 C7.163,0 0,7.163 0,16 C0,24.837 16,48 16,48 C16,48 32,24.837 32,16 C32,7.163 24.837,0 16,0 Z M16,22 C12.686,22 10,19.314 10,16 C10,12.686 12.686,10 16,10 C19.314,10 22,12.686 22,16 C22,19.314 19.314,22 16,22 Z",
-            color: typeToColor[type] || [100, 100, 100, 1],
-            size: 32,
-            outline: { color: [255, 255, 255, 0.9], width: 1.5 },
-            yoffset: 16,
-          }
-        }))
-      },
-      // Scale-dependent labeling
-      labelingInfo: [
-        {
-          labelExpressionInfo: { 
-            expression: "Decode($feature.placeType, 'gas', '⛽', 'food', '🍔', 'rest', '🛑', 'emergency', '🚨', 'hospital', '🏥', 'mechanic', '🔧', '')"
-          },
-          symbol: {
-            type: "text",
-            font: { size: 14, family: "sans-serif" },
-            yoffset: 22,
-            color: [0, 0, 0, 1], // The emoji renders with its own colors mostly, but fallback
-            haloSize: 0,
-          },
-          minScale: 100000,
-          labelPlacement: "center-center",
-          deconflictionStrategy: "none",
-        },
-        {
-          labelExpressionInfo: { expression: "$feature.name" },
-          symbol: {
-            type: "text",
-            color: [40, 40, 40, 1],
-            haloColor: [255, 255, 255, 0.95],
-            haloSize: 2,
-            font: { size: 10, weight: "bold", family: "sans-serif" },
-            xoffset: 14,
-            yoffset: 16,
-            horizontalAlignment: "left"
-          },
-          minScale: 100000 // Only show text labels when zoomed in closer than 1:100,000
-        }
-      ],
-      // Clustering feature!
-      featureReduction: {
-        type: "cluster",
-        clusterRadius: "60px",
-        symbol: {
-          type: "simple-marker",
-          style: "circle",
-          color: [59, 130, 246, 0.95],
-          size: "26px",
-          outline: {
-            color: [255, 255, 255, 1],
-            width: 2
-          }
-        },
-        popupTemplate: {
-          title: "Cluster summary",
-          content: "This cluster represents <b>{cluster_count}</b> places.",
-          fieldInfos: [{
-            fieldName: "cluster_count",
-            format: { places: 0, digitSeparator: true }
-          }]
-        },
-        clusterMinSize: "24px",
-        clusterMaxSize: "40px",
-        labelingInfo: [{
-          deconflictionStrategy: "none",
-          labelExpressionInfo: { expression: "Text($feature.cluster_count, '#,###')" },
-          symbol: {
-            type: "text",
-            color: "#ffffff",
-            font: { weight: "bold", family: "sans-serif", size: "12px" }
-          },
-          labelPlacement: "center-center"
-        }]
-      }
-    });
-
-    view.map.add(placesLayerRef.current);
   }, [placesData, routeData, stopFilters, placesEnabled]);
 
-  // ── Debounced Place Fetching based on view panning ──
+  // ── API: Fetch places once (when turned on) & dynamically on pan ──
   useEffect(() => {
     if (!placesEnabled) return;
     const view = viewRef.current;
     if (!view) return;
+    
+    // Attempt instant fetch on enable if we are already zoomed in
+    if (view.zoom >= 12) {
+      const centerPoint = view.center;
+      if (centerPoint) {
+        fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
+          .then(setPlacesData)
+          .catch(() => {});
+      }
+    }
 
     let timeout;
     const watchHandle = view.watch('extent', () => {
       clearTimeout(timeout);
       timeout = setTimeout(() => {
-        if (view.zoom < 12) return; // Do not fetch
+        if (view.zoom < 12) return;
         const centerPoint = view.center;
         fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
           .then(setPlacesData)
           .catch(() => {});
-      }, 500); // 500ms debounce
+      }, 500); 
     });
 
     return () => watchHandle.remove();

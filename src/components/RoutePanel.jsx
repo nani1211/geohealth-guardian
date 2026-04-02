@@ -15,8 +15,10 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
-  Play
+  Play,
+  Shield
 } from 'lucide-react';
+import useAppStore from '../store/useAppStore';
 
 /**
  * RoutePanel — Start/Destination inputs, calculate button, route summary,
@@ -27,6 +29,10 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
   const [endAddr, setEndAddr] = useState('');
   const [travelMode, setTravelMode] = useState('driving');
   const [showDirections, setShowDirections] = useState(false);
+
+  // Pull weather points and risk level from global store
+  const routeWeatherData = useAppStore(s => s.routeWeatherData);
+  const routeRiskLevel = useAppStore(s => s.routeRiskLevel);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -206,6 +212,41 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
             </div>
           </div>
 
+          {/* Route Risk Level Card */}
+          {routeRiskLevel && (
+            <div className={`p-4 rounded-xl border flex items-center gap-3 ${
+              routeRiskLevel === 'high' ? 'bg-red-50 border-red-200' :
+              routeRiskLevel === 'medium' ? 'bg-amber-50 border-amber-200' :
+              'bg-emerald-50 border-emerald-200'
+            }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                routeRiskLevel === 'high' ? 'bg-red-100' :
+                routeRiskLevel === 'medium' ? 'bg-amber-100' :
+                'bg-emerald-100'
+              }`}>
+                <Shield size={20} className={`${
+                  routeRiskLevel === 'high' ? 'text-red-600' :
+                  routeRiskLevel === 'medium' ? 'text-amber-600' :
+                  'text-emerald-600'
+                }`} />
+              </div>
+              <div>
+                <p className={`text-sm font-bold capitalize ${
+                  routeRiskLevel === 'high' ? 'text-red-700' :
+                  routeRiskLevel === 'medium' ? 'text-amber-700' :
+                  'text-emerald-700'
+                }`}>
+                  {routeRiskLevel} Risk Route
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  {routeRiskLevel === 'high' ? 'Severe weather conditions detected. Consider delaying.' :
+                   routeRiskLevel === 'medium' ? 'Moderate conditions along parts of the route.' :
+                   'Weather conditions look favorable for travel.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={onStartTrip}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98] cursor-pointer"
@@ -215,7 +256,7 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
           </button>
 
           {/* Stats cards */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div className="bg-orange-50 p-3 rounded-xl border border-orange-100 text-center">
               <Thermometer className="mx-auto text-orange-500 mb-1" size={16} />
               <p className="text-base font-bold text-orange-600">
@@ -228,7 +269,14 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
               <p className="text-[11px] font-bold capitalize">
                 {routeData.summary.worstCondition}
               </p>
-              <p className="text-[9px] uppercase tracking-wider opacity-70">Worst Condition</p>
+              <p className="text-[9px] uppercase tracking-wider opacity-70">Worst</p>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center">
+              <MapPin className="mx-auto text-blue-500 mb-1" size={16} />
+              <p className="text-base font-bold text-blue-600">
+                {routeData.summary.sampledPoints || '–'}
+              </p>
+              <p className="text-[9px] text-blue-400 uppercase tracking-wider">Samples</p>
             </div>
           </div>
 
@@ -238,7 +286,7 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
               Route Weather Points
             </p>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {routeData.routeWeatherPoints.map((pt, i) => (
+              {(routeWeatherData || []).map((pt, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-2.5 p-2 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors"

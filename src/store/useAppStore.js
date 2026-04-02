@@ -54,6 +54,9 @@ const useAppStore = create((set, get) => ({
   routeWeatherData: [],
   setRouteWeatherData: (data) => set({ routeWeatherData: data }),
 
+  routeRiskLevel: null, // 'low' | 'medium' | 'high'
+  setRouteRiskLevel: (level) => set({ routeRiskLevel: level }),
+
   routeLoading: false,
   setRouteLoading: (isLoading) => set({ routeLoading: isLoading }),
 
