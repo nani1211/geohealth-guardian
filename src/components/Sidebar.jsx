@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Activity,
   CloudRain,
@@ -28,6 +28,7 @@ import { forwardGeocode } from '../services/routeService';
 import usePreferences from '../hooks/usePreferences';
 import useRouteWeather from '../hooks/useRouteWeather';
 import useGeolocation from '../hooks/useGeolocation';
+import useVoiceAssistant from '../hooks/useVoiceAssistant';
 import PreferencesPanel from './PreferencesPanel';
 
 /**
@@ -101,7 +102,6 @@ const Sidebar = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('recentSearches') || '[]');
@@ -154,67 +154,54 @@ const Sidebar = () => {
     }
   };
 
-  const toggleVoiceSearch = () => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert("Voice search is not supported in your browser.");
-      return;
-    }
-    
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
-    
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    
-    recognition.onstart = () => setIsListening(true);
-    
-    recognition.onresult = async (event) => {
-      const transcript = event.results[0][0].transcript.toLowerCase();
-      
-      const intentMap = {
-        'rest area': 'rest',
-        'food': 'food',
-        'gas': 'gas',
-        'hospital': 'hospital',
-        'mechanic': 'mechanic',
-      };
-      
-      for (const [key, filter] of Object.entries(intentMap)) {
-        if (transcript.includes(key)) {
-           if (!stopFilters.includes(filter)) {
-             setStopFilters([...stopFilters, filter]);
-           }
-           if (!placesEnabled) setPlacesEnabled(true);
-           setIsListening(false);
-           setSearchQuery(transcript);
-           return;
-        }
+  // ── Voice Assistant ──────────────────────────────────────────────
+  const voiceHandlers = useMemo(() => ({
+    onFilterToggle: (filterType, forceEnable) => {
+      if (forceEnable && !stopFilters.includes(filterType)) {
+        setStopFilters([...stopFilters, filterType]);
+      } else if (!forceEnable) {
+        setStopFilters(stopFilters.includes(filterType)
+          ? stopFilters.filter(t => t !== filterType)
+          : [...stopFilters, filterType]);
       }
-
-      setSearchQuery(transcript);
+    },
+    onEnablePlaces: () => { if (!placesEnabled) setPlacesEnabled(true); },
+    onWeatherAhead: () => {
+      setActiveTab('route');
+    },
+    onClearFilters: () => {
+      setStopFilters([]);
+    },
+    onShowAll: () => {
+      setStopFilters(['gas', 'food', 'rest', 'hospital', 'mechanic', 'emergency']);
+      if (!placesEnabled) setPlacesEnabled(true);
+    },
+    onSearch: async (query) => {
       setIsSearching(true);
       try {
-        const result = await forwardGeocode(transcript);
+        const result = await forwardGeocode(query);
         setMapCenter([result.lon, result.lat]);
         setMapZoom(13);
         setLocationData({ lat: result.lat, lon: result.lon });
-        saveRecentSearch(transcript);
+        saveRecentSearch(query);
       } catch (err) {
-        console.warn("Geocode failed:", err);
+        console.warn('[Voice] Search fallback failed:', err);
       } finally {
         setIsSearching(false);
       }
-    };
-    
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-    
-    recognition.start();
-  };
+    },
+    onSetSearchQuery: setSearchQuery,
+  }), [stopFilters, placesEnabled, setStopFilters, setPlacesEnabled, setMapCenter, setMapZoom, setLocationData]);
+
+  const { isListening, lastIntent, startListening, clearIntent } = useVoiceAssistant(voiceHandlers);
+
+  // Auto-clear the voice feedback toast after 4 seconds
+  useEffect(() => {
+    if (lastIntent && !isListening) {
+      const timer = setTimeout(clearIntent, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastIntent, isListening, clearIntent]);
 
   const RADIUS_PILLS = [1, 3, 5, 10];
 
@@ -300,11 +287,15 @@ const Sidebar = () => {
                 />
                 <button
                   type="button"
-                  onClick={toggleVoiceSearch}
-                  className={`p-2.5 transition-colors cursor-pointer ${isListening ? 'text-red-500' : 'text-gray-400 hover:text-indigo-600'}`}
-                  title="Voice Search"
+                  onClick={startListening}
+                  className={`p-2.5 transition-all cursor-pointer rounded-full ${
+                    isListening
+                      ? 'text-red-500 bg-red-50 ring-2 ring-red-300 ring-offset-1 animate-pulse'
+                      : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+                  }`}
+                  title={isListening ? 'Listening... tap to cancel' : 'Voice Command — try "food", "gas", "weather ahead"'}
                 >
-                  {isListening ? <Mic className="animate-pulse" size={16} /> : <Mic size={16} />}
+                  {isListening ? <Mic size={16} /> : <Mic size={16} />}
                 </button>
                 {isSearching && (
                   <div className="p-2.5 text-indigo-500">
@@ -313,6 +304,23 @@ const Sidebar = () => {
                 )}
               </form>
             </div>
+
+            {/* Voice feedback toast */}
+            {lastIntent && (
+              <div
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all animate-in slide-in-from-top-2 ${
+                  isListening
+                    ? 'bg-red-50 text-red-700 border border-red-200'
+                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                }`}
+              >
+                <span className="text-base">{lastIntent.emoji}</span>
+                <span className="flex-1">{lastIntent.label}</span>
+                {!isListening && (
+                  <button onClick={clearIntent} className="text-gray-400 hover:text-gray-600 cursor-pointer">✕</button>
+                )}
+              </div>
+            )}
             
             {/* Recent Searches & Location Quick Actions */}
             <div className="flex flex-wrap items-center gap-2 mt-1">
