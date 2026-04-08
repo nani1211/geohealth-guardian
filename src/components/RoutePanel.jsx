@@ -19,6 +19,7 @@ import {
   Shield
 } from 'lucide-react';
 import useAppStore from '../store/useAppStore';
+import AutocompleteInput from './AutocompleteInput';
 
 /**
  * RoutePanel — Start/Destination inputs, calculate button, route summary,
@@ -110,48 +111,38 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
         </div>
 
         {/* Start Input */}
-        <div className="relative flex items-center group">
-          <MapPin size={14} className="absolute left-3 text-green-500 z-10" />
-          <input
-            type="text"
-            value={startAddr}
-            onChange={(e) => setStartAddr(e.target.value)}
-            placeholder={currentLocation?.address ? `Current Location (${currentLocation.address})` : 'Start location (e.g. Chicago, IL)'}
-            className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
-                       focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400
-                       placeholder:text-gray-400"
-          />
-          <button 
-            type="button"
-            onClick={() => setMapPickingMode(mapPickingMode === 'start' ? null : 'start')}
-            className={`absolute right-1.5 p-1.5 rounded-lg transition-all ${mapPickingMode === 'start' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-indigo-600 hover:bg-gray-200/50'}`}
-            title="Tap point on map"
-          >
-            <Navigation size={14} />
-          </button>
-        </div>
+        <AutocompleteInput
+          value={startAddr}
+          onChange={setStartAddr}
+          icon={MapPin}
+          iconColorClass="text-green-500"
+          placeholder={currentLocation?.address ? `Current Location (${currentLocation.address})` : 'Start location (e.g. Chicago, IL)'}
+          buttonAction={{
+            icon: Navigation,
+            onClick: () => setMapPickingMode(mapPickingMode === 'start' ? null : 'start'),
+            title: 'Tap point on map',
+            isActive: mapPickingMode === 'start',
+            activeClass: 'bg-indigo-100 text-indigo-700 shadow-sm',
+            inactiveClass: 'text-gray-400 hover:text-indigo-600 hover:bg-gray-200/50'
+          }}
+        />
 
         {/* Destination Input */}
-        <div className="relative flex items-center group">
-          <Navigation size={14} className="absolute left-3 text-red-500 z-10" />
-          <input
-            type="text"
-            value={endAddr}
-            onChange={(e) => setEndAddr(e.target.value)}
-            placeholder="Destination (e.g. New York, NY)"
-            className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
-                       focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400
-                       placeholder:text-gray-400"
-          />
-          <button 
-            type="button"
-            onClick={() => setMapPickingMode(mapPickingMode === 'end' ? null : 'end')}
-            className={`absolute right-1.5 p-1.5 rounded-lg transition-all ${mapPickingMode === 'end' ? 'bg-emerald-100 text-emerald-700 shadow-sm' : 'text-gray-400 hover:text-emerald-600 hover:bg-gray-200/50'}`}
-            title="Tap point on map"
-          >
-            <MapPin size={14} />
-          </button>
-        </div>
+        <AutocompleteInput
+          value={endAddr}
+          onChange={setEndAddr}
+          icon={Navigation}
+          iconColorClass="text-red-500"
+          placeholder="Destination (e.g. New York, NY)"
+          buttonAction={{
+            icon: MapPin,
+            onClick: () => setMapPickingMode(mapPickingMode === 'end' ? null : 'end'),
+            title: 'Tap point on map',
+            isActive: mapPickingMode === 'end',
+            activeClass: 'bg-emerald-100 text-emerald-700 shadow-sm',
+            inactiveClass: 'text-gray-400 hover:text-emerald-600 hover:bg-gray-200/50'
+          }}
+        />
 
         {/* Buttons */}
         <div className="flex gap-2">

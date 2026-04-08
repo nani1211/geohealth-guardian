@@ -22,15 +22,15 @@ import {
 import LayerControls from './LayerControls';
 import ForecastPanel from './ForecastPanel';
 import RoutePanel from './RoutePanel';
+import PreferencesPanel from './PreferencesPanel';
+import AutocompleteInput from './AutocompleteInput';
 import useAppStore from '../store/useAppStore';
-import { forwardGeocode } from '../services/routeService';
 
 import usePreferences from '../hooks/usePreferences';
 import useRouteWeather from '../hooks/useRouteWeather';
 import useGeolocation from '../hooks/useGeolocation';
 import useVoiceAssistant from '../hooks/useVoiceAssistant';
 import useUnits from '../hooks/useUnits';
-import PreferencesPanel from './PreferencesPanel';
 
 /**
  * Sidebar — left-side panel with two tabs: Location (click weather) | Route (A→B weather).
@@ -301,37 +301,24 @@ const Sidebar = () => {
             Click the map or plan a route to assess weather conditions.
           </p>
           <div className="mt-4 flex flex-col gap-2">
-            <div className="flex bg-gray-50 border border-gray-200 rounded-xl overflow-hidden shadow-sm focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-              <form onSubmit={(e) => handleSearchSubmit(e)} className="flex-1 flex items-center">
-                <button type="submit" disabled={isSearching} className="pl-3 pr-2 text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer">
-                  <Search size={16} />
-                </button>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Search city, address, destination..."
-                  className="flex-1 py-2.5 text-xs bg-transparent outline-none text-gray-800 placeholder-gray-400"
+            <div className="flex bg-gray-50 border border-gray-200 rounded-xl overflow-visible shadow-sm focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
+              <form onSubmit={(e) => handleSearchSubmit(e)} className="flex-1">
+                <AutocompleteInput
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  disabled={isSearching || isListening}
+                  onChange={setSearchQuery}
+                  onSelect={(item) => handleSearchSubmit(null, item.label)}
+                  placeholder="Search city, address, destination..."
+                  icon={Search}
+                  className="w-full bg-transparent border-0 ring-0 hover:bg-transparent focus:bg-transparent"
+                  buttonAction={{
+                    icon: Mic,
+                    onClick: startListening,
+                    title: isListening ? 'Listening... tap to cancel' : 'Voice Command',
+                    isActive: isListening,
+                    activeClass: 'text-red-500 bg-red-50 ring-2 ring-red-300 ring-offset-1 animate-pulse',
+                    inactiveClass: 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+                  }}
                 />
-                <button
-                  type="button"
-                  onClick={startListening}
-                  className={`p-2.5 transition-all cursor-pointer rounded-full ${
-                    isListening
-                      ? 'text-red-500 bg-red-50 ring-2 ring-red-300 ring-offset-1 animate-pulse'
-                      : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
-                  }`}
-                  title={isListening ? 'Listening... tap to cancel' : 'Voice Command — try "food", "gas", "weather ahead"'}
-                >
-                  {isListening ? <Mic size={16} /> : <Mic size={16} />}
-                </button>
-                {isSearching && (
-                  <div className="p-2.5 text-indigo-500">
-                    <Loader size={16} className="animate-spin" />
-                  </div>
-                )}
               </form>
             </div>
 

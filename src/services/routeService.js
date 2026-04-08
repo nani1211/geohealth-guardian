@@ -13,27 +13,24 @@ import * as locator from '@arcgis/core/rest/locator';
 const GEOCODE_URL = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
 const ROUTE_URL = 'https://route-api.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World';
 
+import { photonGeocode } from './geocodeService';
+
 // ─── Forward Geocode ───────────────────────────────────────────────
 /**
- * Convert a human-readable address into coordinates.
+ * Convert a human-readable address into coordinates (ZERO COST via Photon).
  *
  * @param {string} address — e.g. "Chicago, IL"
  * @returns {Promise<{ lat: number, lon: number, label: string }>}
  */
 export async function forwardGeocode(address) {
-  const results = await locator.addressToLocations(GEOCODE_URL, {
-    address: { SingleLine: address },
-    maxLocations: 1,
-    outFields: ['Match_addr']
-  });
-
-  const cand = results[0];
-  if (!cand) throw new Error(`Could not geocode: "${address}"`);
+  const result = await photonGeocode(address);
+  
+  if (!result) throw new Error(`Could not geocode: "${address}". Photon returned 0 results.`);
 
   return {
-    lat: cand.location.latitude,
-    lon: cand.location.longitude,
-    label: cand.attributes?.Match_addr || address,
+    lat: result.lat,
+    lon: result.lon,
+    label: address,
   };
 }
 

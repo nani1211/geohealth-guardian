@@ -101,3 +101,61 @@ function formatAddress(addr) {
 
   return parts.length > 0 ? parts.join(', ') : 'Location not identified';
 }
+
+// ── Photon (Komoot) Free Open-Source Autocomplete Search ────────────────────────
+
+export const suggestAddresses = async (query) => {
+  if (!query || query.length < 3) return [];
+  
+  try {
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5`);
+    const data = await res.json();
+    return data.features.map((f, index) => {
+      const p = f.properties;
+      const context = [p.city, p.state, p.country].filter(Boolean).join(', ');
+      const name = p.name || p.street || p.city || 'Unknown place';
+      return {
+        id: p.osm_id || index,
+        name: name,
+        context: context,
+        label: context ? `${name}, ${context}` : name,
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0],
+      };
+    });
+  } catch (error) {
+    console.error('[Photon] Suggestion failed:', error);
+    return [];
+  }
+};
+
+/**
+ * Perform a zero-cost geocode lookup using Photon or return cached lat/lon
+ */
+export const photonGeocode = async (address) => {
+  const cacheKey = `geo_${address.toLowerCase().trim()}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    console.log('[Photon] Cache hit for address:', address);
+    return JSON.parse(cached);
+  }
+
+  try {
+    console.log('[Photon] Fetching geocode for address:', address);
+    const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`);
+    const data = await res.json();
+    if (data.features && data.features.length > 0) {
+      const f = data.features[0];
+      const result = {
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0]
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+      return result;
+    }
+    throw new Error('No results from Photon');
+  } catch (error) {
+    console.error('[Photon] Geocode failed:', error);
+    return null;
+  }
+};
