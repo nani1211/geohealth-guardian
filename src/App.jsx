@@ -4,7 +4,7 @@ import Polyline from '@arcgis/core/geometry/Polyline';
 import Point from '@arcgis/core/geometry/Point';
 import MapImageLayer from '@arcgis/core/layers/MapImageLayer';
 import MapView from './components/MapView';
-import Sidebar from './components/Sidebar';
+import FloatingInterface from './components/FloatingInterface';
 import config from '@arcgis/core/config';
 import { Loader2 } from 'lucide-react';
 
@@ -367,15 +367,14 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen w-full overflow-hidden bg-gray-100 font-sans">
-      <Sidebar />
+    <div className="relative h-screen w-full overflow-hidden bg-gray-100 font-sans">
+      <div className="absolute inset-0 z-0">
+        <MapView />
+      </div>
 
-      <div className="flex-1 relative">
-        <div className="absolute inset-0 z-0">
-          <MapView />
-        </div>
+      <FloatingInterface />
 
-        {/* Popups render above the map layer */}
+      {/* Popups render above the map layer */}
         {console.log('[DEBUG RENDER] popupData: ', popupData, typeof popupData)}
         {popupData && typeof popupData === 'object' && (
           <WeatherPopup
@@ -400,7 +399,6 @@ function App() {
 
         <UnitToggle isMetric={isMetric} onToggle={toggleUnits} />
         <RouteAlerts routeData={routeData} tempUnit={tempUnit} preferences={preferences} nwsAlerts={nwsAlerts} onAlertClick={handleAlertClick} />
-      </div>
 
       {isShareModalOpen && (
         <ShareETAModal

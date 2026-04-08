@@ -87,14 +87,15 @@ const MapView = () => {
         useHeadingEnabled: false,
         goToLocationEnabled: true,
       });
-      view.ui.add(trackWidget, 'top-left');
+      view.ui.add(trackWidget, 'bottom-right');
 
       // 2. Add Compass Widget
       const compassWidget = new Compass({
         view: view,
       });
-      view.ui.add(compassWidget, 'top-left');
+      view.ui.add(compassWidget, 'bottom-right');
 
+      view.ui.move("zoom", "bottom-right");
 
       // Disable the native popup's auto-open because we manually handle it below
       view.popup.autoOpenEnabled = false;
@@ -155,17 +156,13 @@ const MapView = () => {
           return; 
         }
 
-        // Otherwise close any open custom popups
-        setPlacePopupData(null);
-      });
-
-      // Map Hold: Weather dashboard triggering
-      const holdHandle = view.on('hold', async (event) => {
+        // ── Regular Map Click (Empty Map Area) ──
+        // Trigger weather dashboard and map popup
         setPlacePopupData(null); // Dismiss custom popup
         const { latitude: lat, longitude: lon } = event.mapPoint;
         const screenPoint = { x: event.x, y: event.y };
 
-        console.log('[MapView] Map long-pressed! lat:', lat, 'lon:', lon);
+        console.log('[MapView] Empty map area clicked! lat:', lat, 'lon:', lon);
         setPopupData({ weather: null, address: null, screenPoint, lat, lon, loading: true });
 
         const currentUnits = unitsRef.current;
@@ -190,13 +187,17 @@ const MapView = () => {
         setPopupData({ weather, address, screenPoint, lat, lon, loading: false });
       });
 
+      const zoomHandle = view.watch('zoom', (newZoom) => {
+        setMapZoom(Math.round(newZoom));
+      });
+
       view._clickHandle = clickHandle;
-      view._holdHandle = holdHandle;
+      view._zoomHandle = zoomHandle;
     });
 
     return () => {
       view._clickHandle?.remove();
-      view._holdHandle?.remove();
+      view._zoomHandle?.remove();
       view.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,7 +426,10 @@ const MapView = () => {
     const watchHandle = view.watch('extent', () => {
       clearTimeout(timeout);
       timeout = setTimeout(() => {
-        if (view.zoom < 12) return;
+        if (view.zoom < 11) {
+          setPlacesData([]); // Clear places from screen when zoomed out
+          return;
+        }
         const centerPoint = view.center;
         setPlacesLoading(true);
         fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
