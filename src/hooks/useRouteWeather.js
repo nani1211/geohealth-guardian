@@ -69,6 +69,10 @@ function sampleRouteWithTurf(paths, intervalKm = 8) {
   const totalKm = turf.length(line, { units: 'kilometers' });
   const totalMiles = turf.length(line, { units: 'miles' });
 
+  // Dynamically scale interval to keep points count reasonable (max ~30 points)
+  let scaledInterval = intervalKm;
+  if (totalKm > 200) scaledInterval = Math.max(intervalKm, totalKm / 20);
+
   const points = [];
 
   // Always include route start
@@ -79,8 +83,8 @@ function sampleRouteWithTurf(paths, intervalKm = 8) {
     kmMarker: 0,
   });
 
-  // Walk along the line at `intervalKm` steps
-  for (let km = intervalKm; km < totalKm; km += intervalKm) {
+  // Walk along the line at `scaledInterval` steps
+  for (let km = scaledInterval; km < totalKm; km += scaledInterval) {
     const pt = turf.along(line, km, { units: 'kilometers' });
     const [lon, lat] = pt.geometry.coordinates;
     const mileMarker = +(km * 0.621371).toFixed(1);

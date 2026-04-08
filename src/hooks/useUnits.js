@@ -1,36 +1,21 @@
-import { useState, useCallback } from 'react';
+import useAppStore from '../store/useAppStore';
 
 /**
- * useUnits — manages measurement unit preferences (F/C, mph/kmh).
+ * useUnits — reads unit preferences from the global Zustand store.
  *
- * Persists to localStorage so preferences survive page refreshes.
+ * All components share the same unit state, so toggling in one place
+ * (e.g., UnitToggle in App.jsx) updates Sidebar, RoutePanel, Popup, etc.
  *
  * Returns:
  *  • units        — 'metric' | 'imperial'
  *  • tempUnit     — '°C' | '°F'
  *  • windUnit     — 'm/s' | 'mph'
+ *  • isMetric     — boolean
  *  • toggleUnits  — function to flip between metric ↔ imperial
  */
-const STORAGE_KEY = 'geohealth-units';
-
-function readStored() {
-  try {
-    const val = localStorage.getItem(STORAGE_KEY);
-    if (val === 'imperial' || val === 'metric') return val;
-  } catch { /* SSR / private browsing */ }
-  return 'metric'; // default
-}
-
 const useUnits = () => {
-  const [units, setUnits] = useState(readStored);
-
-  const toggleUnits = useCallback(() => {
-    setUnits((prev) => {
-      const next = prev === 'metric' ? 'imperial' : 'metric';
-      try { localStorage.setItem(STORAGE_KEY, next); } catch {}
-      return next;
-    });
-  }, []);
+  const units = useAppStore((s) => s.units);
+  const toggleUnits = useAppStore((s) => s.toggleUnits);
 
   return {
     units,

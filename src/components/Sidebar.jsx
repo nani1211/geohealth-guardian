@@ -29,6 +29,7 @@ import usePreferences from '../hooks/usePreferences';
 import useRouteWeather from '../hooks/useRouteWeather';
 import useGeolocation from '../hooks/useGeolocation';
 import useVoiceAssistant from '../hooks/useVoiceAssistant';
+import useUnits from '../hooks/useUnits';
 import PreferencesPanel from './PreferencesPanel';
 
 /**
@@ -44,6 +45,7 @@ const Sidebar = () => {
     mapCenter, setMapCenter,
     mapZoom, setMapZoom,
     placesData, setPlacesData,
+    placesLoading,
     placesEnabled, setPlacesEnabled,
     activeLayers: globalActiveLayers, toggleLayer,
     weatherData, setWeatherData,
@@ -65,8 +67,7 @@ const Sidebar = () => {
   const { calculateRoute, clearRoute } = useRouteWeather();
   const { preferences, updatePreference, addFavoriteFood, removeFavoriteFood, updateMealWindow } = usePreferences();
   const searchRadiusMiles = preferences.searchRadiusMiles;
-  const tempUnit = 'celsius'; // We would pull from useUnits
-  const windUnit = 'kmh';
+  const { tempUnit, windUnit } = useUnits();
 
   const weatherLayerOn = globalActiveLayers.weather;
   const diseaseLayerOn = globalActiveLayers.disease;
@@ -229,13 +230,15 @@ const Sidebar = () => {
         className={`
           fixed md:relative z-40 
           bottom-0 md:top-0 left-0 
-          w-full md:w-[380px] 
-          h-[80vh] md:h-full
+          w-full md:h-full
           bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.1)] md:shadow-xl md:border-r border-gray-200
           rounded-t-[32px] md:rounded-none
-          flex flex-col
-          transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
-          ${collapsed ? 'translate-y-[calc(100%-80px)] md:translate-y-0 md:!w-16 overflow-hidden' : 'translate-y-0 overflow-y-auto md:overflow-hidden'}
+          flex flex-col overflow-hidden
+          transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+          ${collapsed
+            ? 'translate-y-[calc(100%-80px)] md:translate-y-0 md:w-16 h-[80vh] md:h-full'
+            : 'translate-y-0 md:w-[380px] h-[80vh] md:h-full'
+          }
         `}
       >
         {/* Mobile Drag Handle / Notch */}
@@ -245,6 +248,31 @@ const Sidebar = () => {
         >
           <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
         </div>
+
+        {/* ── COLLAPSED RAIL (desktop only) ─────────── */}
+        {collapsed && (
+          <div className="hidden md:flex flex-col items-center py-4 gap-4 flex-1">
+            {/* Shield logo */}
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+              <Shield size={18} className="text-white" />
+            </div>
+            {/* Expand button */}
+            <button
+              onClick={() => setCollapsed(false)}
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+              title="Expand sidebar"
+            >
+              <ChevronLeft size={20} className="rotate-180" />
+            </button>
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 opacity-40">
+              <Navigation size={16} className="text-indigo-500" />
+              <MapPin size={16} className="text-blue-400" />
+            </div>
+          </div>
+        )}
+
+        {/* ── EXPANDED CONTENT (hidden on desktop when collapsed) ── */}
+        <div className={`flex flex-col flex-1 overflow-hidden ${collapsed ? 'hidden md:hidden' : 'flex'}`}>
         {/* Header */}
         <div className="p-6 pb-4 border-b border-gray-100">
           <div className="flex items-center justify-between">
@@ -259,12 +287,13 @@ const Sidebar = () => {
             </div>
             {/* Arrow logic for Desktop vs Mobile */}
             <div className="flex items-center gap-1">
-              {preferencesPanel}
+              {!collapsed && preferencesPanel}
               <button
                 onClick={() => setCollapsed(!collapsed)}
-                className="hidden md:flex text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                <ChevronLeft size={20} className={`transition-transform ${collapsed ? 'rotate-180' : ''}`} />
+                <ChevronLeft size={20} className={`transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
               </button>
             </div>
           </div>
@@ -279,6 +308,7 @@ const Sidebar = () => {
                 </button>
                 <input
                   type="text"
+                  autoFocus
                   placeholder="Search city, address, destination..."
                   className="flex-1 py-2.5 text-xs bg-transparent outline-none text-gray-800 placeholder-gray-400"
                   value={searchQuery}
@@ -344,7 +374,7 @@ const Sidebar = () => {
         </div>
 
         {/* ── Tab pills ────────────────────────────────────────────── */}
-        <div className="px-5 pt-4 pb-2">
+        <div className={`px-5 pt-4 pb-2 ${collapsed ? 'md:hidden' : ''}`}>
           <div className="flex bg-gray-100 rounded-xl p-1">
             <button
               onClick={() => setActiveTab('location')}
@@ -370,7 +400,7 @@ const Sidebar = () => {
         </div>
 
         {/* ── Content area ─────────────────────────────────────────── */}
-        <div className="flex-1 p-5 pt-2 overflow-y-auto overflow-x-hidden custom-scrollbar pb-24">
+        <div className={`flex-1 p-5 pt-2 overflow-y-auto overflow-x-hidden custom-scrollbar pb-24 ${collapsed ? 'md:hidden' : ''}`}>
           {/* Layer toggles (always visible) */}
           <div className="mb-4">
             <LayerControls
@@ -599,7 +629,12 @@ const Sidebar = () => {
                               ))}
                             </div>
 
-                            {placesData && placesData.length > 0 ? (
+                            {placesLoading ? (
+                              <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+                                <Loader size={20} className="animate-spin text-indigo-500 mb-2" />
+                                <p className="text-xs">Fetching places...</p>
+                              </div>
+                            ) : placesData && placesData.length > 0 ? (
                               <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                                 {placesData.filter(stop => stopFilters?.includes(stop.type)).map((stop, i) => (
                               <div
@@ -698,11 +733,14 @@ const Sidebar = () => {
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-100 text-center">
+        <div className={`p-4 border-t border-gray-100 text-center ${collapsed ? 'md:hidden' : ''}`}>
           <p className="text-[10px] text-gray-400">
             Powered by ArcGIS, Google Places &amp; OpenWeather
           </p>
         </div>
+
+        </div>{/* end expanded content wrapper */}
+
       </aside>
     </>
   );

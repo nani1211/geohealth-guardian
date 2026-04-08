@@ -12,6 +12,20 @@ const useAppStore = create((set, get) => ({
   isShareModalOpen: false,
   setIsShareModalOpen: (isOpen) => set({ isShareModalOpen: isOpen }),
 
+  // Unit preferences — shared across all components
+  units: (() => {
+    try {
+      const v = localStorage.getItem('geohealth-units');
+      return v === 'imperial' ? 'imperial' : 'metric';
+    } catch { return 'metric'; }
+  })(),
+  toggleUnits: () =>
+    set((state) => {
+      const next = state.units === 'metric' ? 'imperial' : 'metric';
+      try { localStorage.setItem('geohealth-units', next); } catch {}
+      return { units: next };
+    }),
+
   // Core Data State
   currentLocation: null,
   setCurrentLocation: (loc) => set({ currentLocation: loc }),
@@ -29,13 +43,30 @@ const useAppStore = create((set, get) => ({
   setForecastData: (data) => set({ forecastData: data }),
 
   popupData: null,
-  setPopupData: (data) => set({ popupData: data }),
+  setPopupData: (dataOrFn) => set((state) => {
+    const nextVal = typeof dataOrFn === 'function' ? dataOrFn(state.popupData) : dataOrFn;
+    console.log('[STORE] setPopupData called. new:', nextVal);
+    if (nextVal === null) {
+      console.trace('[STORE] setPopupData set to NULL by:');
+    }
+    return { popupData: nextVal };
+  }),
 
   placePopupData: null,
   setPlacePopupData: (data) => set({ placePopupData: data }),
 
   airQualityData: null,
   setAirQualityData: (data) => set({ airQualityData: data }),
+
+  // Map Picking & Routing Mode
+  mapPickingMode: null, // 'start' | 'end' | null
+  setMapPickingMode: (mode) => set({ mapPickingMode: mode }),
+
+  routeStart: '',
+  setRouteStart: (addr) => set({ routeStart: addr }),
+
+  routeEnd: '',
+  setRouteEnd: (addr) => set({ routeEnd: addr }),
 
   nwsAlerts: [],
   setNwsAlerts: (data) => set({ nwsAlerts: data }),
@@ -67,6 +98,9 @@ const useAppStore = create((set, get) => ({
   placesData: [],
   setPlacesData: (data) => set({ placesData: data }),
 
+  placesLoading: false,
+  setPlacesLoading: (isLoading) => set({ placesLoading: isLoading }),
+
   placesEnabled: false,
   setPlacesEnabled: (enabled) => {
     set({ placesEnabled: enabled });
@@ -80,7 +114,8 @@ const useAppStore = create((set, get) => ({
     weather: true,
     nws: true,
     airQuality: false,
-    disease: false
+    disease: false,
+    traffic: false,
   },
   toggleLayer: (layer) => set(state => ({
     activeLayers: {

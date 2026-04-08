@@ -156,7 +156,8 @@ function App() {
         if (forecast) setForecastData(forecast);
         if (weather) {
           setWeatherData(weather);
-          setPopupData((prev) => (prev ? { ...prev, weather } : null));
+          const existing = useAppStore.getState().popupData;
+          if (existing) setPopupData({ ...existing, weather });
         }
       });
     }
@@ -184,12 +185,9 @@ function App() {
       setLocationData({ lat: location.lat, lon: location.lon });
       const currentUnits = units;
 
-      // Reset data
-      setWeatherData(null);
-      setAddressData(null);
-      setForecastData(null);
-      setPopupData(null);
-      setAirQualityData(null);
+      // Optional: Only clear things that definitively need to change.
+      // We do NOT clear popupData here anymore to avoid snuffing out open popups on GPS refresh.
+      // Also leaving weatherData / addressData intact until the new fetch arrives to avoid flicker.
       setNwsAlerts([]);
 
       // Fetch all for current location (including AQI + NWS alerts)
@@ -213,7 +211,7 @@ function App() {
         if (places && placesEnabled) setPlacesData(places);
         if (aqi) setAirQualityData(aqi);
         if (alerts) setNwsAlerts(alerts);
-        if (weather && weatherLayerOn) {
+        if (weather) {
           setWeatherData(weather);
         }
       });
@@ -310,6 +308,7 @@ function App() {
   }, []);
 
   const closePopup = () => {
+    console.trace('[App] closePopup called!');
     setPopupData(null);
     setPlacePopupData(null);
   };
@@ -374,24 +373,31 @@ function App() {
       <div className="flex-1 relative">
         <div className="absolute inset-0 z-0">
           <MapView />
-          {popupData && (
-            <WeatherPopup
-              weather={popupData.weather}
-              address={popupData.address}
-              screenPoint={popupData.screenPoint}
-              tempUnit={units.temp}
-              windUnit={units.wind}
-              onClose={closePopup}
-            />
-          )}
-          {placePopupData && (
-            <PlacePopup
-              place={placePopupData.place}
-              screenPoint={placePopupData.screenPoint}
-              onClose={closePopup}
-            />
-          )}
         </div>
+
+        {/* Popups render above the map layer */}
+        {console.log('[DEBUG RENDER] popupData: ', popupData, typeof popupData)}
+        {popupData && typeof popupData === 'object' && (
+          <WeatherPopup
+            weather={popupData.weather}
+            address={popupData.address}
+            screenPoint={popupData.screenPoint}
+            tempUnit={tempUnit}
+            windUnit={windUnit}
+            loading={popupData.loading}
+            lat={popupData.lat}
+            lon={popupData.lon}
+            onClose={closePopup}
+          />
+        )}
+        {placePopupData && (
+          <PlacePopup
+            place={placePopupData.place}
+            screenPoint={placePopupData.screenPoint}
+            onClose={closePopup}
+          />
+        )}
+
         <UnitToggle isMetric={isMetric} onToggle={toggleUnits} />
         <RouteAlerts routeData={routeData} tempUnit={tempUnit} preferences={preferences} nwsAlerts={nwsAlerts} onAlertClick={handleAlertClick} />
       </div>

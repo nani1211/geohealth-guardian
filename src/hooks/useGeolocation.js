@@ -58,7 +58,7 @@ const useGeolocation = () => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        console.log('[Geolocation] Got position:', loc);
+        console.trace('[Geolocation] Got position:', loc);
         setLocation(loc);
         setSource('gps');
         saveToCache(loc);

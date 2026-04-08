@@ -25,8 +25,13 @@ import useAppStore from '../store/useAppStore';
  * waypoint list, recommended stops with ratings, and meal recommendations.
  */
 const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData, loading, error, tempUnit, stopFilters, onToggleStopFilter, onStartTrip }) => {
-  const [startAddr, setStartAddr] = useState('');
-  const [endAddr, setEndAddr] = useState('');
+  // Pull routing inputs and map picking mode from global store
+  const { 
+    routeStart: startAddr, setRouteStart: setStartAddr,
+    routeEnd: endAddr, setRouteEnd: setEndAddr,
+    mapPickingMode, setMapPickingMode 
+  } = useAppStore();
+
   const [travelMode, setTravelMode] = useState('driving');
   const [showDirections, setShowDirections] = useState(false);
 
@@ -103,32 +108,49 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
             <Footprints size={14} /> Walking
           </button>
         </div>
-        {/* Start */}
-        <div className="relative">
-          <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500" />
+
+        {/* Start Input */}
+        <div className="relative flex items-center group">
+          <MapPin size={14} className="absolute left-3 text-green-500 z-10" />
           <input
             type="text"
             value={startAddr}
             onChange={(e) => setStartAddr(e.target.value)}
             placeholder={currentLocation?.address ? `Current Location (${currentLocation.address})` : 'Start location (e.g. Chicago, IL)'}
-            className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
+            className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
                        focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400
                        placeholder:text-gray-400"
           />
+          <button 
+            type="button"
+            onClick={() => setMapPickingMode(mapPickingMode === 'start' ? null : 'start')}
+            className={`absolute right-1.5 p-1.5 rounded-lg transition-all ${mapPickingMode === 'start' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-indigo-600 hover:bg-gray-200/50'}`}
+            title="Tap point on map"
+          >
+            <Navigation size={14} />
+          </button>
         </div>
 
-        {/* Destination */}
-        <div className="relative">
-          <Navigation size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
+        {/* Destination Input */}
+        <div className="relative flex items-center group">
+          <Navigation size={14} className="absolute left-3 text-red-500 z-10" />
           <input
             type="text"
             value={endAddr}
             onChange={(e) => setEndAddr(e.target.value)}
             placeholder="Destination (e.g. New York, NY)"
-            className="w-full pl-9 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
+            className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
                        focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400
                        placeholder:text-gray-400"
           />
+          <button 
+            type="button"
+            onClick={() => setMapPickingMode(mapPickingMode === 'end' ? null : 'end')}
+            className={`absolute right-1.5 p-1.5 rounded-lg transition-all ${mapPickingMode === 'end' ? 'bg-emerald-100 text-emerald-700 shadow-sm' : 'text-gray-400 hover:text-emerald-600 hover:bg-gray-200/50'}`}
+            title="Tap point on map"
+          >
+            <MapPin size={14} />
+          </button>
         </div>
 
         {/* Buttons */}
@@ -282,9 +304,16 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
 
           {/* Waypoint list */}
           <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-2">
-              Route Weather Points
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                Route Weather Points
+              </p>
+              <div className="flex items-center gap-2 text-[9px] text-gray-400 font-medium">
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-blue-500"/> Normal</span>
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-yellow-500"/> Mod</span>
+                <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-red-500"/> Severe</span>
+              </div>
+            </div>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {(routeWeatherData || []).map((pt, i) => (
                 <div
@@ -438,6 +467,19 @@ const RoutePanel = ({ currentLocation, onCalculateRoute, onClearRoute, routeData
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!routeData && !loading && !error && (
+        <div className="flex-1 flex flex-col items-center justify-center text-center mt-12 px-4">
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+            <Shield className="text-blue-500" size={30} />
+          </div>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">No Route Selected</h3>
+          <p className="text-xs text-gray-500 leading-relaxed max-w-[200px] mx-auto">
+            Enter a start and destination above to compute route weather and safety risks.
+          </p>
         </div>
       )}
     </div>

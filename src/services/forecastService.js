@@ -34,6 +34,7 @@ function generateMockForecast(lat, lon, units = 'metric') {
     const date = new Date(now);
     date.setDate(date.getDate() + i);
 
+    const drift = Math.sin(i * 0.5) * 5;
     const highC = +(baseTemp + drift + 4 + Math.random() * 2).toFixed(1);
     const lowC = +(baseTemp + drift - 3 - Math.random() * 2).toFixed(1);
     const high = units === 'imperial' ? +(highC * 9 / 5 + 32).toFixed(1) : highC;

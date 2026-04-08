@@ -33,16 +33,18 @@ const MapView = () => {
     routeWeatherData,
     mapCenter, setMapCenter,
     mapZoom, setMapZoom,
-    placesData, setPlacesData,
+    placesData, setPlacesData, setPlacesLoading,
     placesEnabled,
     stopFilters,
     weatherData, setWeatherData,
     setAddressData,
     setForecastData,
     setPopupData,
-    setPlacePopupData,
+    placePopupData, setPlacePopupData,
     activeLayers,
-    currentLocation
+    currentLocation,
+    mapPickingMode, setMapPickingMode,
+    setRouteStart, setRouteEnd
   } = useAppStore();
 
   const weatherEnabled = activeLayers.weather;
@@ -108,7 +110,24 @@ const MapView = () => {
         }
       });
 
+      // Regular Map Click: Handling place popups and map picking for routing
       const clickHandle = view.on('click', async (event) => {
+        const pickingMode = useAppStore.getState().mapPickingMode;
+
+        // Routing Pin Placer
+        if (pickingMode) {
+          console.log('[MapView] Map click intercepted for routing mapPickingMode:', pickingMode);
+          const { latitude: lat, longitude: lon } = event.mapPoint;
+          const addressText = await reverseGeocode(lat, lon).then(a => a?.label || `${lat.toFixed(4)}, ${lon.toFixed(4)}`).catch(() => `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+          if (pickingMode === 'start') {
+             useAppStore.getState().setRouteStart(addressText);
+          } else if (pickingMode === 'end') {
+             useAppStore.getState().setRouteEnd(addressText);
+          }
+          useAppStore.getState().setMapPickingMode(null);
+          return; // Stop standard click handling
+        }
+
         const response = await view.hitTest(event);
         
         // 1. Check if we clicked a custom place marker
@@ -119,7 +138,7 @@ const MapView = () => {
         if (placeGraphic) {
           const screenPoint = { x: event.x, y: event.y };
           setPlacePopupData({ place: placeGraphic.attributes, screenPoint });
-          return; // Skip normal map click processing
+          return; 
         }
 
         // 2. Check if we clicked any other graphic that has a native popup defined (e.g. disease layer)
@@ -133,33 +152,29 @@ const MapView = () => {
             location: event.mapPoint,
           });
           setPlacePopupData(null); // Dismiss custom popup
-          return; // Skip normal map click processing
+          return; 
         }
 
-        // 3. Normal map click (weather)
+        // Otherwise close any open custom popups
+        setPlacePopupData(null);
+      });
+
+      // Map Hold: Weather dashboard triggering
+      const holdHandle = view.on('hold', async (event) => {
         setPlacePopupData(null); // Dismiss custom popup
         const { latitude: lat, longitude: lon } = event.mapPoint;
         const screenPoint = { x: event.x, y: event.y };
 
-        const geocodePromise = reverseGeocode(lat, lon);
+        console.log('[MapView] Map long-pressed! lat:', lat, 'lon:', lon);
+        setPopupData({ weather: null, address: null, screenPoint, lat, lon, loading: true });
+
         const currentUnits = unitsRef.current;
-        const forecastPromise = fetchForecast(lat, lon, currentUnits).catch(() => []);
 
-        if (!weatherEnabledRef.current) {
-          const [address, forecast] = await Promise.all([geocodePromise, forecastPromise]);
-          setAddressData(address);
-          setForecastData(forecast);
-          return;
-        }
-
-        // Notify parent immediately (loading state)
-        setPopupData({ weather: null, screenPoint });
-
-        // Fetch weather, geocode, and forecast in parallel
+        // Fetch everything in parallel
         const [weather, address, forecast] = await Promise.all([
           fetchWeatherData(lat, lon, currentUnits).catch(() => null),
-          geocodePromise,
-          forecastPromise,
+          reverseGeocode(lat, lon).catch(() => null),
+          fetchForecast(lat, lon, currentUnits).catch(() => []),
         ]);
 
         if (weather) {
@@ -171,14 +186,17 @@ const MapView = () => {
         if (forecast) setForecastData(forecast);
         if (weather) setWeatherData(weather);
 
-        setPopupData({ weather, address, screenPoint });
+        // Always show popup — even with no weather (show coords + address)
+        setPopupData({ weather, address, screenPoint, lat, lon, loading: false });
       });
 
       view._clickHandle = clickHandle;
+      view._holdHandle = holdHandle;
     });
 
     return () => {
       view._clickHandle?.remove();
+      view._holdHandle?.remove();
       view.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,28 +346,53 @@ const MapView = () => {
       mechanic: [100, 116, 139, 1],
     };
 
-    const graphicsToAdd = filteredPlaces.map((place, i) => {
+    const graphicsToAdd = [];
+
+    filteredPlaces.forEach((place, i) => {
       const type = place.type || 'rest';
       const color = typeToColor[type] || [100, 100, 100, 1];
-      
-      return new Graphic({
+      const isSelected = placePopupData?.place?.id === place.id;
+      const attrs = {
+        ObjectID: i,
+        isPlaceMarker: true,
+        placeType: type,
+        name: place.name,
+        ...place,
+      };
+
+      // Pin marker
+      graphicsToAdd.push(new Graphic({
         geometry: new Point({ longitude: place.lon, latitude: place.lat }),
-        attributes: {
-          ObjectID: i,
-          isPlaceMarker: true,
-          placeType: type,
-          name: place.name,
-          ...place
-        },
+        attributes: attrs,
         symbol: {
           type: 'simple-marker',
           path: "M16,0 C7.163,0 0,7.163 0,16 C0,24.837 16,48 16,48 C16,48 32,24.837 32,16 C32,7.163 24.837,0 16,0 Z M16,22 C12.686,22 10,19.314 10,16 C10,12.686 12.686,10 16,10 C19.314,10 22,12.686 22,16 C22,19.314 19.314,22 16,22 Z",
-          color: color,
-          size: 32,
-          outline: { color: [255, 255, 255, 0.9], width: 1.5 },
-          yoffset: 16,
-        }
-      });
+          color: isSelected ? [255, 255, 255, 1] : color,
+          size: isSelected ? 40 : 32,
+          outline: { color: isSelected ? color : [255, 255, 255, 0.9], width: isSelected ? 3 : 1.5 },
+          yoffset: isSelected ? 20 : 16,
+        },
+      }));
+
+      // Text label above pin
+      const label = place.name
+        ? (place.name.length > 22 ? place.name.slice(0, 21) + '…' : place.name)
+        : '';
+      if (label) {
+        graphicsToAdd.push(new Graphic({
+          geometry: new Point({ longitude: place.lon, latitude: place.lat }),
+          attributes: { ...attrs, isPlaceMarker: false }, // don't re-trigger click popup
+          symbol: {
+            type: 'text',
+            text: label,
+            color: isSelected ? [79, 70, 229, 1] : [30, 30, 30, 1],
+            font: { size: 10, family: 'sans-serif', weight: isSelected ? 'bold' : 'normal' },
+            haloColor: [255, 255, 255, 0.95],
+            haloSize: 2,
+            yoffset: isSelected ? 46 : 38,
+          },
+        }));
+      }
     });
 
     if (graphicsToAdd.length > 0) {
@@ -358,7 +401,7 @@ const MapView = () => {
     
     console.log('[Stability Fix] Synced placesLayer graphics count:', graphicsToAdd.length);
 
-  }, [placesData, routeData, stopFilters, placesEnabled]);
+  }, [placesData, routeData, stopFilters, placesEnabled, placePopupData]);
 
   // ── API: Fetch places once (when turned on) & dynamically on pan ──
   useEffect(() => {
@@ -370,9 +413,11 @@ const MapView = () => {
     if (view.zoom >= 12) {
       const centerPoint = view.center;
       if (centerPoint) {
+        setPlacesLoading(true);
         fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
           .then(setPlacesData)
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => setPlacesLoading(false));
       }
     }
 
@@ -382,14 +427,16 @@ const MapView = () => {
       timeout = setTimeout(() => {
         if (view.zoom < 12) return;
         const centerPoint = view.center;
+        setPlacesLoading(true);
         fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
           .then(setPlacesData)
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => setPlacesLoading(false));
       }, 500); 
     });
 
     return () => watchHandle.remove();
-  }, [placesEnabled, searchRadiusMeters, setPlacesData]);
+  }, [placesEnabled, searchRadiusMeters, setPlacesData, setPlacesLoading]);
 
   return (
     <div
