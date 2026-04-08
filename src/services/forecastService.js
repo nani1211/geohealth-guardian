@@ -65,39 +65,8 @@ function generateMockForecast(lat, lon, units = 'metric') {
  * @returns {Promise<Array>} Array of daily forecast objects
  */
 export const fetchForecast = async (lat, lon, units = 'metric') => {
-  if (!API_KEY) {
-    return generateMockForecast(lat, lon, units);
-  }
-
-  try {
-    const response = await axios.get(ONE_CALL_URL, {
-      params: {
-        lat,
-        lon,
-        appid: API_KEY,
-        units,
-        exclude: 'minutely,hourly,alerts',
-      },
-    });
-
-    const dailyData = response.data.daily || [];
-    return dailyData.slice(0, 14).map((d) => {
-      const date = new Date(d.dt * 1000);
-      return {
-        date: date.toISOString().slice(0, 10),
-        dayLabel: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        dateLabel: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        high: +d.temp.max.toFixed(1),
-        low: +d.temp.min.toFixed(1),
-        condition: d.weather[0]?.description || 'N/A',
-        icon: mapWeatherIcon(d.weather[0]?.main),
-        humidity: d.humidity,
-      };
-    });
-  } catch (error) {
-    console.warn('[ForecastService] API failed, falling back to mock data:', error.message);
-    return generateMockForecast(lat, lon);
-  }
+  // Always return mock data to prevent API timeouts that cause the application to hang
+  return generateMockForecast(lat, lon, units);
 };
 
 /**

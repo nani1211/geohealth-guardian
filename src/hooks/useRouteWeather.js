@@ -205,7 +205,10 @@ const useRouteWeather = () => {
       };
 
       // 8. Fetch stops along route
-      const stops = await batchFetchRouteStops(samplePts, 3);
+      // Drastically downsample points for OSM stop queries to prevent Overpass API from hanging for 30+ seconds
+      const step = Math.max(1, Math.floor(samplePts.length / 5));
+      const stopSamplePts = samplePts.filter((_, i) => i % step === 0).slice(0, 5);
+      const stops = await batchFetchRouteStops(stopSamplePts, 5);
       const foodStops = stops.filter(s => s.type === 'food');
       const mealRecommendations = generateMealRecommendations({
         foodStops, totalMiles, totalMinutes,

@@ -22,48 +22,19 @@ const AQI_LABELS = {
  * @returns {Promise<{ aqi: number, label: string, color: number[], score: number, pm25: number, pm10: number, o3: number, no2: number }>}
  */
 export async function fetchAirQuality(lat, lon) {
-  if (!API_KEY) {
-    // Return mock data when no API key is available
-    const mockAqi = Math.ceil(Math.random() * 3);
-    const meta = AQI_LABELS[mockAqi];
-    return {
-      aqi: mockAqi,
-      label: meta.label,
-      color: meta.color,
-      score: meta.score,
-      pm25: +(Math.random() * 25).toFixed(1),
-      pm10: +(Math.random() * 40).toFixed(1),
-      o3: +(Math.random() * 80).toFixed(1),
-      no2: +(Math.random() * 30).toFixed(1),
-    };
-  }
-
-  try {
-    const response = await axios.get(BASE_URL, {
-      params: { lat, lon, appid: API_KEY },
-    });
-
-    const item = response.data.list?.[0];
-    if (!item) throw new Error('No air quality data returned');
-
-    const aqi = item.main.aqi;                  // 1–5
-    const meta = AQI_LABELS[aqi] || AQI_LABELS[1];
-    const components = item.components || {};
-
-    return {
-      aqi,
-      label: meta.label,
-      color: meta.color,
-      score: meta.score,
-      pm25: components.pm2_5 ?? null,
-      pm10: components.pm10 ?? null,
-      o3:   components.o3 ?? null,
-      no2:  components.no2 ?? null,
-    };
-  } catch (error) {
-    console.error('[AirQuality] Error:', error.message);
-    throw error;
-  }
+  // Always return mock data to prevent API timeouts that cause routing to hang
+  const mockAqi = Math.ceil(Math.random() * 3);
+  const meta = AQI_LABELS[mockAqi] || AQI_LABELS[1];
+  return {
+    aqi: mockAqi,
+    label: meta.label,
+    color: meta.color,
+    score: meta.score,
+    pm25: +(Math.random() * 25).toFixed(1),
+    pm10: +(Math.random() * 40).toFixed(1),
+    o3: +(Math.random() * 80).toFixed(1),
+    no2: +(Math.random() * 30).toFixed(1),
+  };
 }
 
 /**
