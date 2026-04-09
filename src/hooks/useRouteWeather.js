@@ -7,6 +7,7 @@ import { batchFetchRouteStops } from '../services/placesService';
 import { batchFetchAirQuality } from '../services/airQualityService';
 import { generateMealRecommendations } from '../services/mealAdvisor';
 import { generateSmartStops } from '../services/smartStopService';
+import { batchFetchRouteAlerts } from '../services/nwsAlertService';
 
 // ─── 3-tier severity classification ───────────────────────────────
 // severe  → storm, heavy rain, snow, tornado, hurricane, blizzard
@@ -119,7 +120,7 @@ const useRouteWeather = () => {
   const {
     setRouteData, setRouteWeatherData, routeData,
     setRouteLoading, setRouteError, routeError, routeLoading,
-    setRouteRiskLevel,
+    setRouteRiskLevel, setRouteAlerts,
   } = useAppStore();
 
   const clearRoute = useCallback(() => {
@@ -127,7 +128,9 @@ const useRouteWeather = () => {
     setRouteWeatherData([]);
     setRouteRiskLevel(null);
     setRouteError(null);
-  }, [setRouteData, setRouteWeatherData, setRouteRiskLevel, setRouteError]);
+    setRouteAlerts([]);
+  }, [setRouteData, setRouteWeatherData, setRouteRiskLevel, setRouteError, setRouteAlerts]);
+
 
   const calculateRoute = useCallback(async (startAddr, endAddr, units = 'metric', travelMode = 'driving', preferences = {}) => {
     setRouteLoading(true);
@@ -135,6 +138,7 @@ const useRouteWeather = () => {
     setRouteData(null);
     setRouteWeatherData([]);
     setRouteRiskLevel(null);
+    setRouteAlerts([]);
 
     try {
       // 1. Geocode start/end
@@ -205,10 +209,16 @@ const useRouteWeather = () => {
       };
 
       // 8. Fetch stops along route
-      // Drastically downsample points for OSM stop queries to prevent Overpass API from hanging for 30+ seconds
+      // Drastically downsample points for OSM stop queries to prevent Overpass API from hanging
       const step = Math.max(1, Math.floor(samplePts.length / 5));
       const stopSamplePts = samplePts.filter((_, i) => i % step === 0).slice(0, 5);
-      const stops = await batchFetchRouteStops(stopSamplePts, 5);
+
+      // Fetch stops + route alerts in parallel
+      const [stops, routeAlerts] = await Promise.all([
+        batchFetchRouteStops(stopSamplePts, 5),
+        batchFetchRouteAlerts(stopSamplePts, 3).catch(() => []),
+      ]);
+
       const foodStops = stops.filter(s => s.type === 'food');
       const mealRecommendations = generateMealRecommendations({
         foodStops, totalMiles, totalMinutes,
@@ -225,6 +235,19 @@ const useRouteWeather = () => {
         departureTime: new Date(),
       });
 
+      // Attach per-waypoint stops/alerts to routeWeatherPoints for journey feed
+      const enrichedWeatherPoints = routeWeatherPoints.map((pt) => {
+        // Find alerts whose mileMarker is within 10 miles of this point
+        const nearbyAlerts = routeAlerts.filter(
+          (a) => Math.abs((a.mileMarker ?? 0) - pt.mileMarker) <= 10
+        );
+        // Find stops within 5 miles of this waypoint
+        const nearbyStops = stops.filter(
+          (s) => Math.abs((s.mileMarker ?? 0) - pt.mileMarker) <= 5
+        );
+        return { ...pt, nearbyAlerts, nearbyStops };
+      });
+
       // 10. Commit to store
       setRouteData({
         paths,
@@ -233,10 +256,12 @@ const useRouteWeather = () => {
         smartStops,
         dirtRoadSegments,
         directions,
+        routeAlerts,
         summary,
       });
-      setRouteWeatherData(routeWeatherPoints);
+      setRouteWeatherData(enrichedWeatherPoints);
       setRouteRiskLevel(riskLevel);
+      setRouteAlerts(routeAlerts);
 
       console.log('[RouteWeather] Route computed successfully:', {
         distance: `${totalMiles} mi`,

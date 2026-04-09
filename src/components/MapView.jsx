@@ -13,6 +13,7 @@ import { reverseGeocode } from '../services/geocodeService';
 import { fetchForecast } from '../services/forecastService';
 import useAppStore from '../store/useAppStore';
 import '@arcgis/core/assets/esri/themes/light/main.css';
+import { Search } from 'lucide-react';
 
 import usePreferences from '../hooks/usePreferences';
 import { fetchNearbyPlaces } from '../services/placesService';
@@ -44,7 +45,9 @@ const MapView = () => {
     activeLayers,
     currentLocation,
     mapPickingMode, setMapPickingMode,
-    setRouteStart, setRouteEnd
+    setRouteStart, setRouteEnd,
+    showSearchAreaButton, setShowSearchAreaButton,
+    isSidebarOpen
   } = useAppStore();
 
   const weatherEnabled = activeLayers.weather;
@@ -100,16 +103,7 @@ const MapView = () => {
       // Disable the native popup's auto-open because we manually handle it below
       view.popup.autoOpenEnabled = false;
 
-      // Register an action handler for our custom popup buttons (like Navigate)
-      view.popup.on("trigger-action", (event) => {
-        if (event.action.id === "navigate-action") {
-          const attr = view.popup.selectedFeature.attributes;
-          if (attr) {
-            const dest = encodeURIComponent(attr.address || attr.name || `${attr.lat},${attr.lon}`);
-            window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank');
-          }
-        }
-      });
+
 
       // Regular Map Click: Handling place popups and map picking for routing
       const clickHandle = view.on('click', async (event) => {
@@ -406,12 +400,15 @@ const MapView = () => {
 
   // ── API: Fetch places once (when turned on) & dynamically on pan ──
   useEffect(() => {
-    if (!placesEnabled) return;
+    if (!placesEnabled) {
+      setShowSearchAreaButton(false);
+      return;
+    }
     const view = viewRef.current;
     if (!view) return;
     
-    // Attempt instant fetch on enable if we are already zoomed in
-    if (view.zoom >= 12) {
+    // Attempt instant fetch on enable if we are already zoomed in and have no data
+    if (placesData.length === 0 && view.zoom >= 12) {
       const centerPoint = view.center;
       if (centerPoint) {
         setPlacesLoading(true);
@@ -428,26 +425,59 @@ const MapView = () => {
       timeout = setTimeout(() => {
         if (view.zoom < 11) {
           setPlacesData([]); // Clear places from screen when zoomed out
+          setShowSearchAreaButton(false);
           return;
         }
-        const centerPoint = view.center;
-        setPlacesLoading(true);
-        fetchNearbyPlaces(centerPoint.latitude, centerPoint.longitude, searchRadiusMeters)
-          .then(setPlacesData)
-          .catch(() => {})
-          .finally(() => setPlacesLoading(false));
+        setShowSearchAreaButton(true);
       }, 500); 
     });
 
     return () => watchHandle.remove();
-  }, [placesEnabled, searchRadiusMeters, setPlacesData, setPlacesLoading]);
+  }, [placesEnabled, searchRadiusMeters, setPlacesData, setPlacesLoading, setShowSearchAreaButton, placesData.length]);
+
+  const handleSearchThisArea = async () => {
+    const view = viewRef.current;
+    if (!view || !view.center) return;
+    
+    setShowSearchAreaButton(false);
+    setPlacesLoading(true);
+    
+    try {
+      const data = await fetchNearbyPlaces(view.center.latitude, view.center.longitude, searchRadiusMeters);
+      setPlacesData(data);
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setPlacesLoading(false);
+    }
+  };
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full absolute inset-0"
-      style={{ minHeight: '100%' }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className="w-full h-full absolute inset-0"
+        style={{ minHeight: '100%' }}
+      />
+      {showSearchAreaButton && placesEnabled && (
+        <div 
+          className="absolute top-6 z-20 pointer-events-auto transition-all duration-300"
+          style={{
+            left: isSidebarOpen && window.innerWidth >= 768 ? 'calc(50% + 180px)' : '50%',
+            transform: 'translateX(-50%)'
+          }}
+        >
+          <button
+            onClick={handleSearchThisArea}
+
+            className="px-4 py-2 bg-white text-indigo-600 text-sm font-bold rounded-full shadow-lg border border-indigo-100 hover:bg-gray-50 flex items-center gap-2 active:scale-95 transition-all animate-slide-down cursor-pointer"
+          >
+            <Search size={16} />
+            Search this area
+          </button>
+        </div>
+      )}
+    </>
   );
 };
 

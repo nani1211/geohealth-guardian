@@ -94,6 +94,12 @@ const useAppStore = create((set, get) => ({
   routeError: null,
   setRouteError: (err) => set({ routeError: err }),
 
+  routeAlerts: [],
+  setRouteAlerts: (data) => set({ routeAlerts: data }),
+
+  selectedRouteWaypointIndex: null,
+  setSelectedRouteWaypointIndex: (idx) => set({ selectedRouteWaypointIndex: idx }),
+
   // Places Data
   placesData: [],
   setPlacesData: (data) => set({ placesData: data }),
@@ -102,6 +108,10 @@ const useAppStore = create((set, get) => ({
   setPlacesLoading: (isLoading) => set({ placesLoading: isLoading }),
 
   placesEnabled: false,
+  showSearchAreaButton: false,
+  setShowSearchAreaButton: (show) => set({ showSearchAreaButton: show }),
+  isSidebarOpen: true,
+  setIsSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
   setPlacesEnabled: (enabled) => {
     set({ placesEnabled: enabled });
     if (!enabled) {

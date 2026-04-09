@@ -368,37 +368,42 @@ function App() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-100 font-sans">
+      {/* Map fills full screen — sidebar overlays it on desktop, sheet on mobile */}
       <div className="absolute inset-0 z-0">
         <MapView />
       </div>
 
       <FloatingInterface />
 
-      {/* Popups render above the map layer */}
-        {console.log('[DEBUG RENDER] popupData: ', popupData, typeof popupData)}
-        {popupData && typeof popupData === 'object' && (
-          <WeatherPopup
-            weather={popupData.weather}
-            address={popupData.address}
-            screenPoint={popupData.screenPoint}
-            tempUnit={tempUnit}
-            windUnit={windUnit}
-            loading={popupData.loading}
-            lat={popupData.lat}
-            lon={popupData.lon}
-            onClose={closePopup}
-          />
-        )}
-        {placePopupData && (
-          <PlacePopup
-            place={placePopupData.place}
-            screenPoint={placePopupData.screenPoint}
-            onClose={closePopup}
-          />
-        )}
+      {/* Popups render above everything */}
+      {console.log('[DEBUG RENDER] popupData: ', popupData, typeof popupData)}
+      {popupData && typeof popupData === 'object' && (
+        <WeatherPopup
+          weather={popupData.weather}
+          address={popupData.address}
+          screenPoint={popupData.screenPoint}
+          tempUnit={tempUnit}
+          windUnit={windUnit}
+          loading={popupData.loading}
+          lat={popupData.lat}
+          lon={popupData.lon}
+          onClose={closePopup}
+        />
+      )}
+      {placePopupData && (
+        <PlacePopup
+          place={placePopupData.place}
+          screenPoint={placePopupData.screenPoint}
+          onClose={closePopup}
+        />
+      )}
 
+      {/* UnitToggle — top-right, pushed away from the sidebar on desktop */}
+      <div className="absolute top-4 right-4 z-30 md:right-4">
         <UnitToggle isMetric={isMetric} onToggle={toggleUnits} />
-        <RouteAlerts routeData={routeData} tempUnit={tempUnit} preferences={preferences} nwsAlerts={nwsAlerts} onAlertClick={handleAlertClick} />
+      </div>
+
+      <RouteAlerts routeData={routeData} tempUnit={tempUnit} preferences={preferences} nwsAlerts={nwsAlerts} onAlertClick={handleAlertClick} />
 
       {isShareModalOpen && (
         <ShareETAModal

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, X, Wind, Construction } from 'lucide-react';
+import useAppStore from '../store/useAppStore';
 
 /**
  * RouteAlerts — Stacked, multi-type floating notification banners.
@@ -12,12 +13,17 @@ import { AlertTriangle, X, Wind, Construction } from 'lucide-react';
  * 5. 🍽️ Meal Recommendation (informational)
  */
 const RouteAlerts = ({ routeData, tempUnit, preferences, nwsAlerts, onAlertClick }) => {
-  const [dismissedIds, setDismissedIds] = useState(new Set());
+  const [dismissedIds, setDismissedIdsState] = useState(new Set());
+  const { isSidebarOpen } = useAppStore();
+
+  const setDismissedIds = useCallback((updater) => {
+    setDismissedIdsState(updater);
+  }, []);
 
   // Reset dismissed state when a new route is calculated
   useEffect(() => {
     setDismissedIds(new Set());
-  }, [routeData]);
+  }, [routeData, setDismissedIds]);
 
   if (!routeData && (!nwsAlerts || nwsAlerts.length === 0)) return null;
 
@@ -40,13 +46,6 @@ const RouteAlerts = ({ routeData, tempUnit, preferences, nwsAlerts, onAlertClick
           : { bg: 'bg-red-50/95', border: 'border-red-300', text: 'text-red-800', icon: 'text-red-500' },
       });
     });
-  }
-
-  if (!routeData) {
-    // Only NWS alerts, no route
-    const activeAlerts = alerts.filter((a) => !dismissedIds.has(a.id));
-    if (activeAlerts.length === 0) return null;
-    // render below
   }
 
   // ── Weather alerts ──────────────────────────────────────────────
@@ -131,12 +130,18 @@ const RouteAlerts = ({ routeData, tempUnit, preferences, nwsAlerts, onAlertClick
   };
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[92%] md:w-auto md:min-w-[380px] max-w-lg space-y-2">
+    <div
+      className="absolute top-4 z-50 w-[92%] max-w-lg space-y-2 transition-all duration-300 pointer-events-none"
+      style={{
+        left: isSidebarOpen && window.innerWidth >= 768 ? 'calc(50% + 180px)' : '50%',
+        transform: 'translateX(-50%)'
+      }}
+    >
       {activeAlerts.map((alert) => (
         <div
           key={alert.id}
           onClick={() => onAlertClick && onAlertClick(alert)}
-          className={`relative ${alert.style.bg} ${alert.style.border} ${alert.style.text} border rounded-2xl p-3.5 pr-10 shadow-xl backdrop-blur-md transition-all duration-300 ${onAlertClick && alert.place ? 'cursor-pointer hover:shadow-2xl hover:scale-[1.02]' : ''}`}
+          className={`relative ${alert.style.bg} border-2 ${alert.style.border} ${alert.style.text} rounded-2xl p-3.5 pr-10 shadow-xl backdrop-blur-md transition-all duration-300 pointer-events-auto ${onAlertClick && alert.place ? 'cursor-pointer hover:shadow-2xl hover:scale-[1.02]' : ''}`}
           style={{ animation: 'slideDown 0.4s ease-out' }}
         >
           <button

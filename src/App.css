@@ -40,3 +40,11 @@
 .alert-pulse {
   animation: pulse-glow 2s infinite;
 }
+
+/* On desktop, center route alerts in the visible map area (right of 360px sidebar) */
+@media (min-width: 768px) {
+  .route-alerts-container {
+    left: calc(360px + 50% - 180px) !important;
+    transform: translateX(-50%) !important;
+  }
+}
