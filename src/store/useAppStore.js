@@ -91,8 +91,12 @@ const useAppStore = create((set, get) => ({
   routeLoading: false,
   setRouteLoading: (isLoading) => set({ routeLoading: isLoading }),
 
+  isRouteDetailsLoading: false,
+  setIsRouteDetailsLoading: (isLoading) => set({ isRouteDetailsLoading: isLoading }),
+
   routeError: null,
   setRouteError: (err) => set({ routeError: err }),
+
 
   routeAlerts: [],
   setRouteAlerts: (data) => set({ routeAlerts: data }),

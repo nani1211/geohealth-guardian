@@ -8,6 +8,8 @@ import { batchFetchAirQuality } from '../services/airQualityService';
 import { generateMealRecommendations } from '../services/mealAdvisor';
 import { generateSmartStops } from '../services/smartStopService';
 import { batchFetchRouteAlerts } from '../services/nwsAlertService';
+import { batchFetchElevation, fetchDestinationSunset } from '../services/travelMetricsService';
+
 
 // ─── 3-tier severity classification ───────────────────────────────
 // severe  → storm, heavy rain, snow, tornado, hurricane, blizzard
@@ -121,6 +123,7 @@ const useRouteWeather = () => {
     setRouteData, setRouteWeatherData, routeData,
     setRouteLoading, setRouteError, routeError, routeLoading,
     setRouteRiskLevel, setRouteAlerts,
+    setIsRouteDetailsLoading, patchRouteWeatherPoints
   } = useAppStore();
 
   const clearRoute = useCallback(() => {
@@ -164,22 +167,25 @@ const useRouteWeather = () => {
         throw new Error('Could not sample route — no valid geometry');
       }
 
-      // 4. Parallel fetch: weather + AQI for sampled points
-      const [weatherResults, aqiResults] = await Promise.all([
+      // 4. Parallel fetch FACT APIs: weather, AQI, elevation, sunset
+      const [weatherResults, aqiResults, elevations, sunsetData] = await Promise.all([
         batchFetchWeather(samplePts, units),
         preferences.showAirQuality !== false
           ? batchFetchAirQuality(samplePts).catch(() => new Array(samplePts.length).fill(null))
           : Promise.resolve(new Array(samplePts.length).fill(null)),
+        batchFetchElevation(samplePts).catch(() => new Array(samplePts.length).fill(null)),
+        fetchDestinationSunset(endCoord.lat, endCoord.lon)
       ]);
 
-      // 5. Build enriched weather points with 3-tier classification
-      const routeWeatherPoints = samplePts.map((pt, i) => ({
+      // 5. Build enriched weather points with 3-tier classification & elevation
+      let routeWeatherPoints = samplePts.map((pt, i) => ({
         ...pt,
         temperature: weatherResults[i]?.temp,
         condition: weatherResults[i]?.description,
         weather: weatherResults[i],
         severity: classifySeverity(weatherResults[i]?.description),
         airQuality: aqiResults[i],
+        elevation: elevations[i] ?? null,
       }));
 
       // 6. Compute aggregates
@@ -206,77 +212,77 @@ const useRouteWeather = () => {
         totalMinutes,
         travelMode,
         sampledPoints: routeWeatherPoints.length,
+        sunsetData: sunsetData
       };
 
-      // 8. Fetch stops along route
-      // Drastically downsample points for OSM stop queries to prevent Overpass API from hanging
+      // 8. Commit BASE details to store instantly!
+      setRouteData({
+        paths,
+        dirtRoadSegments,
+        directions,
+        summary,
+        routeAlerts: [],
+        stops: [],
+        mealRecommendations: [],
+        smartStops: []
+      });
+      setRouteWeatherData(routeWeatherPoints);
+      setRouteRiskLevel(riskLevel);
+      setRouteLoading(false); 
+
+      // 9. 🏎️ LAZY LOAD: Fetch heavy stops & alerts asynchronously in the background
+      setIsRouteDetailsLoading(true);
+
       const step = Math.max(1, Math.floor(samplePts.length / 5));
       const stopSamplePts = samplePts.filter((_, i) => i % step === 0).slice(0, 5);
 
-      // Fetch stops + route alerts in parallel
-      const [stops, routeAlerts] = await Promise.all([
+      Promise.all([
         batchFetchRouteStops(stopSamplePts, 5),
         batchFetchRouteAlerts(stopSamplePts, 3).catch(() => []),
-      ]);
+      ]).then(([stops, routeAlerts]) => {
+        
+        const foodStops = stops.filter(s => s.type === 'food');
+        const mealRecommendations = generateMealRecommendations({
+          foodStops, totalMiles, totalMinutes,
+          mealWindows: preferences.mealWindows || {},
+          favoriteFoods: preferences.favoriteFoods || [],
+          departureTime: new Date(),
+        });
 
-      const foodStops = stops.filter(s => s.type === 'food');
-      const mealRecommendations = generateMealRecommendations({
-        foodStops, totalMiles, totalMinutes,
-        mealWindows: preferences.mealWindows || {},
-        favoriteFoods: preferences.favoriteFoods || [],
-        departureTime: new Date(),
+        const smartStops = generateSmartStops({
+          stops, totalMiles, totalMinutes, departureTime: new Date(),
+        });
+
+        // Patch background data into live waypoints
+        const enrichedWeatherPoints = routeWeatherPoints.map((pt) => {
+          const nearbyAlerts = routeAlerts.filter(a => Math.abs((a.mileMarker ?? 0) - pt.mileMarker) <= 10);
+          const nearbyStops = stops.filter(s => Math.abs((s.mileMarker ?? 0) - pt.mileMarker) <= 5);
+          return { ...pt, nearbyAlerts, nearbyStops };
+        });
+
+        setRouteData({
+          paths, dirtRoadSegments, directions, summary,
+          stops, routeAlerts, mealRecommendations, smartStops
+        });
+        patchRouteWeatherPoints(enrichedWeatherPoints);
+        setRouteAlerts(routeAlerts);
+        
+        console.log('[RouteWeather] Lazy loading complete.', { stops: stops.length, alerts: routeAlerts.length });
+      }).catch(err => {
+        console.error('[RouteWeather] Background load failed:', err);
+      }).finally(() => {
+        setIsRouteDetailsLoading(false);
       });
 
-      // 9. Smart stop suggestions — segment journey, rank stops
-      const smartStops = generateSmartStops({
-        stops,
-        totalMiles,
-        totalMinutes,
-        departureTime: new Date(),
-      });
-
-      // Attach per-waypoint stops/alerts to routeWeatherPoints for journey feed
-      const enrichedWeatherPoints = routeWeatherPoints.map((pt) => {
-        // Find alerts whose mileMarker is within 10 miles of this point
-        const nearbyAlerts = routeAlerts.filter(
-          (a) => Math.abs((a.mileMarker ?? 0) - pt.mileMarker) <= 10
-        );
-        // Find stops within 5 miles of this waypoint
-        const nearbyStops = stops.filter(
-          (s) => Math.abs((s.mileMarker ?? 0) - pt.mileMarker) <= 5
-        );
-        return { ...pt, nearbyAlerts, nearbyStops };
-      });
-
-      // 10. Commit to store
-      setRouteData({
-        paths,
-        stops,
-        mealRecommendations,
-        smartStops,
-        dirtRoadSegments,
-        directions,
-        routeAlerts,
-        summary,
-      });
-      setRouteWeatherData(enrichedWeatherPoints);
-      setRouteRiskLevel(riskLevel);
-      setRouteAlerts(routeAlerts);
-
-      console.log('[RouteWeather] Route computed successfully:', {
-        distance: `${totalMiles} mi`,
-        duration: `${totalMinutes} min`,
-        samples: routeWeatherPoints.length,
-        riskLevel,
-      });
+      console.log('[RouteWeather] Route initial paths computed instantly.');
 
     } catch (err) {
       console.error('[RouteWeather] Error:', err);
       setRouteError(err.message || 'Failed to calculate route');
-    } finally {
       setRouteLoading(false);
     }
-  }, [setRouteData, setRouteWeatherData, setRouteLoading, setRouteError, setRouteRiskLevel]);
+  }, [setRouteData, setRouteWeatherData, setRouteLoading, setRouteError, setRouteRiskLevel, patchRouteWeatherPoints, setIsRouteDetailsLoading, setRouteAlerts]);
+
 
   return { routeData, calculateRoute, clearRoute };
 };

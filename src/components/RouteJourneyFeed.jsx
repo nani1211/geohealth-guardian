@@ -4,7 +4,7 @@ import {
   AlertTriangle, ChevronRight, Gauge,
   Fuel, Utensils, BedDouble, Zap,
   Car, Footprints, Clock, Navigation,
-  Star, ExternalLink, Info
+  Star, ExternalLink, Info, Loader2, Mountain, Moon
 } from 'lucide-react';
 import useAppStore from '../store/useAppStore';
 
@@ -55,6 +55,7 @@ const AQI_COLOR = ['', 'bg-green-100 text-green-700', 'bg-yellow-100 text-yellow
 const RouteJourneyFeed = ({ routeWeatherPoints, tempUnit, onWaypointClick, routeData }) => {
   const selectedIdx = useAppStore(s => s.selectedRouteWaypointIndex);
   const setSelectedIdx = useAppStore(s => s.setSelectedRouteWaypointIndex);
+  const isRouteDetailsLoading = useAppStore(s => s.isRouteDetailsLoading);
   const selectedRef = useRef(null);
 
   const handleSelect = useCallback((pt, idx) => {
@@ -63,6 +64,15 @@ const RouteJourneyFeed = ({ routeWeatherPoints, tempUnit, onWaypointClick, route
   }, [setSelectedIdx, onWaypointClick]);
 
   if (!routeWeatherPoints || routeWeatherPoints.length === 0) return null;
+
+  // Check for night driving
+  let isNightDriving = false;
+  if (routeData?.summary?.sunsetData?.sunset) {
+    const eta = new Date(Date.now() + (routeData.summary.totalMinutes || 0) * 60000);
+    const sunset = new Date(routeData.summary.sunsetData.sunset);
+    isNightDriving = eta > sunset;
+  }
+
 
   // Group visible stop types per waypoint (deduplicated types only)
   const getStopTypes = (pt) => {
@@ -79,6 +89,21 @@ const RouteJourneyFeed = ({ routeWeatherPoints, tempUnit, onWaypointClick, route
         </p>
         <p className="text-[10px] text-gray-400">Tap to explore</p>
       </div>
+
+      {isNightDriving && (
+        <div className="mb-3 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-md">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center flex-shrink-0">
+              <Moon size={16} className="text-yellow-400" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-100">Night Driving</p>
+              <p className="text-[10px] text-slate-300 leading-tight">Your ETA is past destination sunset. Beware of reduced visibility and wildlife.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Route alerts summary at top if any */}
       {routeData?.routeAlerts?.length > 0 && (
@@ -170,6 +195,13 @@ const RouteJourneyFeed = ({ routeWeatherPoints, tempUnit, onWaypointClick, route
                   ) : (
                     <span className="text-xs text-gray-400 italic">No weather data</span>
                   )}
+
+                  {pt.elevation != null && (
+                    <span className="text-[10px] flex items-center gap-0.5 text-slate-500 font-semibold bg-slate-100 px-1.5 py-0.5 rounded ml-1">
+                      <Mountain size={10} /> {Math.round(pt.elevation)}m
+                    </span>
+                  )}
+
 
                   {/* AQI badge */}
                   {pt.airQuality && pt.airQuality.aqi >= 3 && (
@@ -269,6 +301,13 @@ const RouteJourneyFeed = ({ routeWeatherPoints, tempUnit, onWaypointClick, route
             </button>
           );
         })}
+
+        {isRouteDetailsLoading && (
+          <div className="flex items-center justify-center p-4 gap-2 text-indigo-500">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-xs font-semibold">Discovering stops & alerts...</span>
+          </div>
+        )}
       </div>
     </div>
   );
