@@ -318,9 +318,18 @@ function App() {
   };
 
   const handleCalculateRoute = useCallback(
-    (start, end, mode) => calculateRoute(start, end, units, mode, preferences),
+    (waypointsOrStart, modeOrEnd, legacyMode) => {
+      if (Array.isArray(waypointsOrStart)) {
+        // New waypoints form: (waypoints[], mode)
+        calculateRoute(waypointsOrStart, units, modeOrEnd || 'driving', preferences);
+      } else {
+        // Legacy form: (start, end, mode)
+        calculateRoute(waypointsOrStart, modeOrEnd, units, legacyMode || 'driving', preferences);
+      }
+    },
     [calculateRoute, units, preferences],
   );
+
 
   const handleToggleStopFilter = (type) => {
     setStopFilters((prev) =>

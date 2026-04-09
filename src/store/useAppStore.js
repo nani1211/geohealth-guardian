@@ -59,14 +59,41 @@ const useAppStore = create((set, get) => ({
   setAirQualityData: (data) => set({ airQualityData: data }),
 
   // Map Picking & Routing Mode
-  mapPickingMode: null, // 'start' | 'end' | null
+  // mapPickingMode stores the waypoint ID currently being picked on map, or null
+  mapPickingMode: null,
   setMapPickingMode: (mode) => set({ mapPickingMode: mode }),
 
-  routeStart: '',
-  setRouteStart: (addr) => set({ routeStart: addr }),
+  // Multi-stop Route Waypoints [{ id, address, lat?, lon?, label? }]
+  routeWaypoints: [
+    { id: 'wp-start', address: '', lat: null, lon: null, label: '' },
+    { id: 'wp-end',   address: '', lat: null, lon: null, label: '' },
+  ],
+  setRouteWaypoints: (waypoints) => set({ routeWaypoints: waypoints }),
+  addWaypoint: () => set((state) => {
+    // Insert a blank stop before the last (destination) waypoint
+    const wps = [...state.routeWaypoints];
+    const newWp = { id: `wp-${Date.now()}`, address: '', lat: null, lon: null, label: '' };
+    wps.splice(wps.length - 1, 0, newWp);
+    return { routeWaypoints: wps };
+  }),
+  removeWaypoint: (id) => set((state) => ({
+    routeWaypoints: state.routeWaypoints.filter(wp => wp.id !== id),
+  })),
+  updateWaypoint: (id, patch) => set((state) => ({
+    routeWaypoints: state.routeWaypoints.map(wp => wp.id === id ? { ...wp, ...patch } : wp),
+  })),
 
-  routeEnd: '',
-  setRouteEnd: (addr) => set({ routeEnd: addr }),
+  // Legacy compat - keep setRouteStart/setRouteEnd pointing at first/last waypoint
+  setRouteStart: (addr) => set((state) => ({
+    routeWaypoints: state.routeWaypoints.map((wp, i) =>
+      i === 0 ? { ...wp, address: addr } : wp
+    ),
+  })),
+  setRouteEnd: (addr) => set((state) => ({
+    routeWaypoints: state.routeWaypoints.map((wp, i) =>
+      i === state.routeWaypoints.length - 1 ? { ...wp, address: addr } : wp
+    ),
+  })),
 
   nwsAlerts: [],
   setNwsAlerts: (data) => set({ nwsAlerts: data }),

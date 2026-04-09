@@ -36,22 +36,23 @@ export async function forwardGeocode(address) {
 
 // ─── Routing ───────────────────────────────────────────────────────
 /**
- * Get a real driving or walking route between two coordinate pairs.
- * Expects config.apiKey to be set, otherwise it will fail.
+ * Get a driving or walking route between 2 or more coordinate waypoints.
  *
- * @param {{ lat: number, lon: number }} start
- * @param {{ lat: number, lon: number }} end
+ * @param {Array<{ lat: number, lon: number }>} waypoints  — At least 2 stops
  * @param {'driving'|'walking'} mode — travel mode
- * @returns {Promise<{ paths: number[][][], totalMiles: number, totalMinutes: number }>}
+ * @returns {Promise<{ paths, totalMiles, totalMinutes, dirtRoadSegments, directions }>}
  */
-export async function getRoute(start, end, mode = 'driving') {
+export async function getRoute(waypoints, mode = 'driving') {
+  if (!waypoints || waypoints.length < 2) throw new Error('At least 2 waypoints are required');
+
+  const stops = new FeatureSet({
+    features: waypoints.map(wp =>
+      new Graphic({ geometry: new Point({ longitude: wp.lon, latitude: wp.lat }) })
+    )
+  });
+
   const routeParams = new RouteParameters({
-    stops: new FeatureSet({
-      features: [
-        new Graphic({ geometry: new Point({ longitude: start.lon, latitude: start.lat }) }),
-        new Graphic({ geometry: new Point({ longitude: end.lon, latitude: end.lat }) })
-      ]
-    }),
+    stops,
     returnRoutes: true,
     returnDirections: true,
     directionsLengthUnits: 'miles',
@@ -67,12 +68,10 @@ export async function getRoute(start, end, mode = 'driving') {
   const totalMiles = routeFeature.attributes?.Total_Miles
     || routeFeature.attributes?.Shape_Length
     || 0;
-  
   const totalMinutes = routeFeature.attributes?.Total_TravelTime
     || routeFeature.attributes?.Total_Time
     || 0;
 
-  // Parse direction features for road surface detection
   const directionFeatures = data.routeResults?.[0]?.directions?.features || [];
   const dirtRoadSegments = parseDirectionsForSurface(directionFeatures, totalMiles);
 

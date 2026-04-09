@@ -129,12 +129,21 @@ const FloatingInterface = () => {
     setPlacePopupData({ place, screenPoint: null });
   }, [setMapCenter, setPlacePopupData]);
 
+  const handleClearRoute = useCallback(() => {
+    clearRoute();
+    // Reset waypoints to initial two-slot state
+    useAppStore.getState().setRouteWaypoints([
+      { id: 'wp-start', address: '', lat: null, lon: null, label: '' },
+      { id: 'wp-end',   address: '', lat: null, lon: null, label: '' },
+    ]);
+  }, [clearRoute]);
+
   // ── Shared panel content renders ───────────────────────────────
   const renderRouteTab = () => (
     <RoutePanel
       currentLocation={currentLocation}
-      onCalculateRoute={calculateRoute}
-      onClearRoute={clearRoute}
+      onCalculateRoute={(wps, mode) => calculateRoute(wps, tempUnit === '°F' ? 'imperial' : 'metric', mode, preferences)}
+      onClearRoute={handleClearRoute}
       routeData={routeData}
       loading={routeLoading}
       error={routeError}

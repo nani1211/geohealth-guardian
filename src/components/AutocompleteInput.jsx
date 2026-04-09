@@ -10,6 +10,7 @@ const AutocompleteInput = ({
   icon: Icon = Search,
   iconColorClass = 'text-gray-500',
   className = '',
+  compact = false,
   buttonAction, // { icon, onClick, title, activeClass, inactiveClass, isActive }
 }) => {
   const [query, setQuery] = useState(value || '');
@@ -75,16 +76,16 @@ const AutocompleteInput = ({
 
   return (
     <div className={`relative flex items-center group ${className}`} ref={wrapperRef}>
-      <Icon size={14} className={`absolute left-3 z-10 ${iconColorClass}`} />
+      {Icon && <Icon size={14} className={`absolute left-3 z-10 ${iconColorClass}`} />}
       <input
         type="text"
         value={query}
         onChange={handleChange}
         onFocus={() => { if (query && suggestions.length) setShowDropdown(true); }}
         placeholder={placeholder}
-        className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl
+        className={`w-full ${Icon ? 'pl-9' : 'pl-3'} pr-10 ${compact ? 'py-1.5' : 'py-2.5'} text-sm bg-gray-50 border border-gray-200 rounded-xl
                    focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400
-                   placeholder:text-gray-400"
+                   placeholder:text-gray-400`}
       />
       
       {/* Right action button OR loader */}

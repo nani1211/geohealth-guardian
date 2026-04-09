@@ -135,7 +135,35 @@ const useRouteWeather = () => {
   }, [setRouteData, setRouteWeatherData, setRouteRiskLevel, setRouteError, setRouteAlerts]);
 
 
-  const calculateRoute = useCallback(async (startAddr, endAddr, units = 'metric', travelMode = 'driving', preferences = {}) => {
+  // calculateRoute now accepts an array of waypoint objects {id, address} or legacy (startAddr, endAddr)
+  const calculateRoute = useCallback(async (waypointsOrStart, endAddrOrUnits = 'metric', unitsOrMode = 'metric', travelMode = 'driving', preferences = {}) => {
+    // Handle both legacy (startAddr, endAddr, units, mode, prefs) and new (waypoints[], units, mode, prefs)
+    let wpList, units, mode, prefs;
+    if (Array.isArray(waypointsOrStart)) {
+      wpList   = waypointsOrStart;   // [{id, address}, ...]
+      units    = endAddrOrUnits;     // second arg = units
+      mode     = unitsOrMode;        // third arg = mode
+      prefs    = travelMode;         // fourth arg = prefs
+      if (typeof prefs !== 'object') prefs = {};
+      if (typeof mode !== 'string') mode = 'driving';
+    } else {
+      // legacy two-string form
+      wpList = [
+        { id: 'wp-start', address: waypointsOrStart },
+        { id: 'wp-end',   address: endAddrOrUnits },
+      ];
+      units  = unitsOrMode;
+      mode   = travelMode;
+      prefs  = preferences;
+    }
+
+    // Filter out blank stops
+    const activeWps = wpList.filter(wp => wp.address?.trim());
+    if (activeWps.length < 2) {
+      setRouteError('Please enter at least a start and a destination.');
+      return;
+    }
+
     setRouteLoading(true);
     setRouteError(null);
     setRouteData(null);
@@ -144,16 +172,22 @@ const useRouteWeather = () => {
     setRouteAlerts([]);
 
     try {
-      // 1. Geocode start/end
-      const [startCoord, endCoord] = await Promise.all([
-        forwardGeocode(startAddr),
-        forwardGeocode(endAddr),
-      ]);
+      // 1. Geocode all active waypoints in parallel
+      const geocoded = await Promise.all(
+        activeWps.map(wp =>
+          wp.lat && wp.lon
+            ? Promise.resolve({ lat: wp.lat, lon: wp.lon, label: wp.address })
+            : forwardGeocode(wp.address)
+        )
+      );
 
-      // 2. Get route geometry
+      const startCoord = geocoded[0];
+      const endCoord   = geocoded[geocoded.length - 1];
+
+      // 2. Get route geometry (multi-waypoint)
       let routeResult;
       try {
-        routeResult = await getRoute(startCoord, endCoord, travelMode);
+        routeResult = await getRoute(geocoded, mode);
       } catch (routeErr) {
         console.warn('[RouteWeather] Routing API failed, using straight-line fallback');
         routeResult = createMockRoute(startCoord, endCoord);
@@ -170,9 +204,10 @@ const useRouteWeather = () => {
       // 4. Parallel fetch FACT APIs: weather, AQI, elevation, sunset
       const [weatherResults, aqiResults, elevations, sunsetData] = await Promise.all([
         batchFetchWeather(samplePts, units),
-        preferences.showAirQuality !== false
+        prefs.showAirQuality !== false
           ? batchFetchAirQuality(samplePts).catch(() => new Array(samplePts.length).fill(null))
           : Promise.resolve(new Array(samplePts.length).fill(null)),
+
         batchFetchElevation(samplePts).catch(() => new Array(samplePts.length).fill(null)),
         fetchDestinationSunset(endCoord.lat, endCoord.lon)
       ]);
@@ -210,7 +245,8 @@ const useRouteWeather = () => {
         endLabel: endCoord.label,
         totalMiles,
         totalMinutes,
-        travelMode,
+        travelMode: mode,
+        stopLabels: activeWps.map(wp => wp.address),
         sampledPoints: routeWeatherPoints.length,
         sunsetData: sunsetData
       };
@@ -244,8 +280,9 @@ const useRouteWeather = () => {
         const foodStops = stops.filter(s => s.type === 'food');
         const mealRecommendations = generateMealRecommendations({
           foodStops, totalMiles, totalMinutes,
-          mealWindows: preferences.mealWindows || {},
-          favoriteFoods: preferences.favoriteFoods || [],
+          mealWindows: prefs.mealWindows || {},
+          favoriteFoods: prefs.favoriteFoods || [],
+
           departureTime: new Date(),
         });
 

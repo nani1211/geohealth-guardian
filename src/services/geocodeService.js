@@ -1,5 +1,6 @@
 import config from '@arcgis/core/config';
 
+const ARCGIS_FORWARD_URL = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
 
 
 /**
@@ -130,16 +131,18 @@ export const suggestAddresses = async (query) => {
 };
 
 /**
- * Perform a zero-cost geocode lookup using Photon or return cached lat/lon
+ * Perform a zero-cost geocode lookup using Photon or return cached lat/lon.
+ * Falls back to ArcGIS World Geocoder when Photon returns 0 results (e.g. precise street addresses).
  */
 export const photonGeocode = async (address) => {
-  const cacheKey = `geo_${address.toLowerCase().trim()}`;
-  const cached = localStorage.getItem(cacheKey);
+  const key = `geo_${address.toLowerCase().trim()}`;
+  const cached = localStorage.getItem(key);
   if (cached) {
     console.log('[Photon] Cache hit for address:', address);
     return JSON.parse(cached);
   }
 
+  // ── Photon first ────────────────────────────────────────────────
   try {
     console.log('[Photon] Fetching geocode for address:', address);
     const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`);
@@ -148,14 +151,41 @@ export const photonGeocode = async (address) => {
       const f = data.features[0];
       const result = {
         lat: f.geometry.coordinates[1],
-        lon: f.geometry.coordinates[0]
+        lon: f.geometry.coordinates[0],
       };
-      localStorage.setItem(cacheKey, JSON.stringify(result));
+      localStorage.setItem(key, JSON.stringify(result));
       return result;
     }
-    throw new Error('No results from Photon');
+    console.warn('[Photon] No results, falling back to ArcGIS geocoder for:', address);
   } catch (error) {
-    console.error('[Photon] Geocode failed:', error);
+    console.warn('[Photon] Request failed, falling back to ArcGIS geocoder:', error);
+  }
+
+  // ── ArcGIS World Geocoder fallback ───────────────────────────────
+  try {
+    const url = new URL(ARCGIS_FORWARD_URL);
+    url.searchParams.append('SingleLine', address);
+    url.searchParams.append('outFields', 'Match_addr,StAddr,City,Region,Postal');
+    url.searchParams.append('maxLocations', '1');
+    url.searchParams.append('f', 'json');
+    if (config.apiKey) url.searchParams.append('token', config.apiKey);
+
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    const top = data.candidates?.[0];
+    if (top && top.score >= 60 && top.location) {
+      const result = {
+        lat: top.location.y,
+        lon: top.location.x,
+      };
+      localStorage.setItem(key, JSON.stringify(result));
+      console.log('[ArcGIS Geocoder] Fallback resolved:', top.address);
+      return result;
+    }
+    console.error('[ArcGIS Geocoder] Fallback also returned no results for:', address);
+    return null;
+  } catch (err) {
+    console.error('[ArcGIS Geocoder] Fallback failed:', err);
     return null;
   }
 };

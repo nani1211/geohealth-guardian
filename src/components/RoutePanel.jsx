@@ -12,7 +12,11 @@ import {
   Clock,
   Play,
   Shield,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  GripVertical,
+  Circle,
+  Square
 } from 'lucide-react';
 import useAppStore from '../store/useAppStore';
 import AutocompleteInput from './AutocompleteInput';
@@ -36,8 +40,10 @@ const RoutePanel = ({
   onWaypointClick,
 }) => {
   const {
-    routeStart: startAddr, setRouteStart: setStartAddr,
-    routeEnd: endAddr, setRouteEnd: setEndAddr,
+    routeWaypoints,
+    updateWaypoint,
+    addWaypoint,
+    removeWaypoint,
     mapPickingMode, setMapPickingMode,
     setMapCenter,
   } = useAppStore();
@@ -49,10 +55,18 @@ const RoutePanel = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const actualStart = startAddr.trim() || currentLocation?.address;
-    if (!actualStart || !endAddr.trim()) return;
-    onCalculateRoute(actualStart, endAddr.trim(), travelMode);
+    // Inject current location into start if blank 
+    const wps = routeWaypoints.map((wp, i) => {
+      if (i === 0 && !wp.address.trim() && currentLocation?.address) {
+        return { ...wp, address: currentLocation.address };
+      }
+      return wp;
+    });
+    onCalculateRoute(wps, travelMode);
   };
+
+  const hasEnoughWaypoints = routeWaypoints.filter(wp => wp.address.trim()).length >= 2
+    || (!routeWaypoints[0].address.trim() && currentLocation?.address && routeWaypoints[routeWaypoints.length - 1].address.trim());
 
   const formatTime = (mins) => {
     if (!mins) return '–';
@@ -108,47 +122,83 @@ const RoutePanel = ({
           </button>
         </div>
 
-        {/* Start */}
-        <AutocompleteInput
-          value={startAddr}
-          onChange={setStartAddr}
-          icon={MapPin}
-          iconColorClass="text-green-500"
-          placeholder={currentLocation?.address
-            ? `Current: ${currentLocation.address.split(',')[0]}`
-            : 'Start (e.g. Chicago, IL)'}
-          buttonAction={{
-            icon: Navigation,
-            onClick: () => setMapPickingMode(mapPickingMode === 'start' ? null : 'start'),
-            title: 'Tap point on map',
-            isActive: mapPickingMode === 'start',
-            activeClass: 'bg-indigo-100 text-indigo-700 shadow-sm',
-            inactiveClass: 'text-gray-400 hover:text-indigo-600 hover:bg-gray-200/50'
-          }}
-        />
+        {/* Waypoint Inputs — dynamic list */}
+        <div className="space-y-2">
+          {routeWaypoints.map((wp, idx) => {
+            const isFirst = idx === 0;
+            const isLast  = idx === routeWaypoints.length - 1;
+            const isIntermediate = !isFirst && !isLast;
+            const isBeingPicked  = mapPickingMode === wp.id;
 
-        {/* Destination */}
-        <AutocompleteInput
-          value={endAddr}
-          onChange={setEndAddr}
-          icon={Navigation}
-          iconColorClass="text-red-500"
-          placeholder="Destination (e.g. New York, NY)"
-          buttonAction={{
-            icon: MapPin,
-            onClick: () => setMapPickingMode(mapPickingMode === 'end' ? null : 'end'),
-            title: 'Tap point on map',
-            isActive: mapPickingMode === 'end',
-            activeClass: 'bg-emerald-100 text-emerald-700 shadow-sm',
-            inactiveClass: 'text-gray-400 hover:text-emerald-600 hover:bg-gray-200/50'
-          }}
-        />
+            const dotColor = isFirst ? 'text-green-500' : isLast ? 'text-red-500' : 'text-indigo-400';
+            const placeholder = isFirst
+              ? (currentLocation?.address ? `Current: ${currentLocation.address.split(',')[0]}` : 'Start location')
+              : isLast ? 'Destination' : `Stop ${idx}`;
+
+            return (
+              <div key={wp.id} className="flex items-center gap-1.5 group">
+                {/* Timeline dot */}
+                <div className="flex-shrink-0 w-5 flex flex-col items-center gap-0.5">
+                  {isFirst  ? <Circle   size={12} className="text-green-500 fill-green-500" /> : null}
+                  {isLast   ? <Square   size={10} className="text-red-500 fill-red-500" /> : null}
+                  {isIntermediate ? <Circle size={10} className="text-indigo-400 fill-indigo-100 stroke-indigo-400" /> : null}
+                </div>
+
+                {/* Address autocomplete */}
+                <div className="flex-1 min-w-0">
+                  <AutocompleteInput
+                    value={wp.address}
+                    onChange={(val) => updateWaypoint(wp.id, { address: val, lat: null, lon: null })}
+                    icon={null}
+                    placeholder={placeholder}
+                    compact
+                    buttonAction={{
+                      icon: MapPin,
+                      onClick: () => setMapPickingMode(isBeingPicked ? null : wp.id),
+                      title: 'Tap location on map',
+                      isActive: isBeingPicked,
+                      activeClass: 'bg-indigo-100 text-indigo-700 shadow-sm',
+                      inactiveClass: 'text-gray-400 hover:text-indigo-600 hover:bg-gray-100'
+                    }}
+                  />
+                </div>
+
+                {/* Remove button — only on intermediate stops */}
+                {isIntermediate && (
+                  <button
+                    type="button"
+                    onClick={() => removeWaypoint(wp.id)}
+                    className="flex-shrink-0 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="Remove stop"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+                {/* Spacer to keep alignment for first/last */}
+                {!isIntermediate && <div className="w-6 flex-shrink-0" />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add Stop */}
+        {routeWaypoints.length < 8 && (
+          <button
+            type="button"
+            onClick={addWaypoint}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs text-indigo-600 font-semibold
+                       bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-dashed border-indigo-200
+                       transition-all cursor-pointer mt-1"
+          >
+            <Plus size={13} /> Add Stop
+          </button>
+        )}
 
         {/* Action buttons */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-1">
           <button
             type="submit"
-            disabled={loading || (!startAddr.trim() && !currentLocation?.address) || !endAddr.trim()}
+            disabled={loading || !hasEnoughWaypoints}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold
                        text-white bg-gradient-to-r from-indigo-600 to-blue-600 rounded-xl
                        hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50
@@ -157,7 +207,7 @@ const RoutePanel = ({
             {loading ? (
               <><Loader2 size={14} className="animate-spin" /> Analyzing route…</>
             ) : (
-              <><Navigation size={14} /> Calculate Route</>
+              <><Navigation size={14} /> Build Route</>
             )}
           </button>
           {routeData && (

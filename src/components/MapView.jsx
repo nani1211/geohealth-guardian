@@ -113,12 +113,12 @@ const MapView = () => {
         if (pickingMode) {
           console.log('[MapView] Map click intercepted for routing mapPickingMode:', pickingMode);
           const { latitude: lat, longitude: lon } = event.mapPoint;
-          const addressText = await reverseGeocode(lat, lon).then(a => a?.label || `${lat.toFixed(4)}, ${lon.toFixed(4)}`).catch(() => `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-          if (pickingMode === 'start') {
-             useAppStore.getState().setRouteStart(addressText);
-          } else if (pickingMode === 'end') {
-             useAppStore.getState().setRouteEnd(addressText);
-          }
+          const addr = await reverseGeocode(lat, lon)
+            .then(a => a?.formatted || `${lat.toFixed(4)}, ${lon.toFixed(4)}`)
+            .catch(() => `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+
+          // Dynamic waypoint update — pickingMode IS the waypoint ID
+          useAppStore.getState().updateWaypoint(pickingMode, { address: addr, lat, lon, label: addr });
           useAppStore.getState().setMapPickingMode(null);
           return; // Stop standard click handling
         }
